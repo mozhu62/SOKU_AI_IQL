@@ -23,6 +23,8 @@ python scripts/train.py --config configs/iql_suika.yaml --resume outputs/iql_sui
 
 ## 实战与兼容
 
+CPU 迁移包保存的空 GradScaler 状态可直接续训：CUDA AMP 会新建缩放历史并打印警告，不改变已迁移权重；无需重新迁移。
+
 实战配置默认模型更新为 `outputs/iql_suika_tcn64/actor_bc.pt`。窗口根据实际加载模型的 spec 选择 32 或 64，满真实连续窗口才发键；断帧、换局重新积累。网页与评估报告显示实际窗口长度。无需改 DLL 的帧数据结构。
 
 64 帧完整包有独立版本，不能直接 `--resume` 旧32帧包跳过迁移。导出策略仍使用 Actor 包形式，但有独立网络版本，未更新的原 BC 推理端会拒绝加载；请使用本项目更新后的实战入口。原 BC 项目源码未改。

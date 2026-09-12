@@ -19,6 +19,7 @@ from filelock import FileLock
 from . import checkpoint
 from .bc_core.storage import atomic_json
 from .config import load, validate_resume, ACTOR_SAMPLING, ACTOR_WEIGHTING
+from .amp_state import restore_grad_scaler
 from .dataset import IQLReplayStore, fixed_split
 from .learner import Learner
 
@@ -115,7 +116,7 @@ def run(config_path, init_bc=None, resume=None, control=None):
             learner.networks.load_state_dict(package["networks"], strict=True)
             for key in learner.optimizers:
                 learner.optimizers[key].load_state_dict(package["optimizers"][key])
-                learner.scalers[key].load_state_dict(package["scalers"][key])
+                restore_grad_scaler(learner.scalers[key], package["scalers"][key], key)
             torch.set_rng_state(package["rng_cpu"].cpu())
             if learner.device.type == "cuda" and package["rng_cuda"]:
                 if len(package["rng_cuda"]) != torch.cuda.device_count():
