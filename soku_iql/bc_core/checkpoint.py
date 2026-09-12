@@ -19,7 +19,7 @@ def load(path: Path):
     if not isinstance(package, dict) or package.get("algorithm") != "bc":
         raise ValueError("仅接受 BC checkpoint；CQL/PPO/IQL 权重不能作为 BC 续训模型，请从随机初始化开始")
     version = package.get("network_version")
-    if version != NETWORK_VERSION:
+    if version not in (NETWORK_VERSION, "soku_iql_tcn64_joint144_v1", "soku_iql_tcn256_joint144_v1"):
         raise ValueError(
             "BC checkpoint schema 不兼容：当前版本为 228D 状态、256D 当前编码和 Joint144 输出，"
             "已移除卡牌输入/输出和技能等级；旧 Joint432 权重不允许部分加载。"
@@ -94,4 +94,3 @@ def restore(package, learner, split):
     torch.set_rng_state(package["rng_cpu"].cpu().to(torch.uint8))
     if learner.device.type == "cuda" and len(package["rng_cuda"]) == torch.cuda.device_count():
         torch.cuda.set_rng_state_all([value.cpu().to(torch.uint8) for value in package["rng_cuda"]])
-

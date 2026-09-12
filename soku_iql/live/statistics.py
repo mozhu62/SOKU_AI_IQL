@@ -40,7 +40,7 @@ class EvaluationStatistics:
                          "checkpoint": model.path, "checkpoint_sha256": model.sha256, "step": model.step,
                          "network_version": model.model.spec["network_version"],
                          "temporal": copy.deepcopy(model.model.spec["temporal"]),
-                         "temporal_capture_policy": "liveframes_v1_real32_no_padding",
+                         "temporal_capture_policy": f"liveframes_v1_real{model.tcn_window.size}_no_padding",
                          "model_inputs": copy.deepcopy(model.model.spec["inputs"]),
                          "device": str(model.device), "action_selection": model.action_selection,
                          "output_semantics": "categorical_logits",

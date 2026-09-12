@@ -7,7 +7,7 @@ training:
   device: cuda
   batch_size: 64
   sequence_length: 32
-  burn_in: 31
+  burn_in: 255
   total_steps: 100000
   amp: true
   prefetch_batches: 4
@@ -18,7 +18,7 @@ training:
   replays_per_batch: 8
   cpu_threads: 4
 iql:
-  n_step: 3
+  n_step: 30
   gamma: 0.99
   expectile: 0.7
   advantage_beta: 3.0
@@ -40,4 +40,4 @@ reward:
   damage_dealt: 0.002
   damage_taken: 0.001
 output:
-  directory: outputs/iql_suika
+  directory: outputs/iql_suika_tcn256

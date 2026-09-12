@@ -1,5 +1,5 @@
 # 这是独立的 Windows 实战验证配置，不改变训练配置和模型权重。
-checkpoint: outputs/iql_suika/actor_bc.pt
+checkpoint: outputs/iql_suika_tcn256/actor_bc.pt
 device: cuda
 cpu_threads: 2
 output: outputs/evaluations

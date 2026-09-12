@@ -69,7 +69,7 @@ def validate(config):
     if env["player_side"] not in ("left", "right"):
         raise ValueError("player_side 必须是 left（1P）或 right（2P）")
     if env["decision_interval_frames"] != 1:
-        raise ValueError("TCN32 实战要求 decision_interval_frames=1，以便逐帧维护真实 32 帧窗口")
+        raise ValueError("TCN 实战要求 decision_interval_frames=1，以便逐帧维护模型所需的真实历史窗口")
     for key in ("max_inference_lag_frames", "max_memory_gap_frames"):
         if not integer(env[key], 1, 120):
             raise ValueError(f"{key} 必须是 1～120 帧")

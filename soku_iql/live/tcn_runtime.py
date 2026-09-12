@@ -92,10 +92,11 @@ def run_tcn_loop(runtime, client, restart):
             continue
         restart.reset(runtime.control)
         count = len(runtime.agent.tcn_window)
-        if count < 32:
+        required = runtime.agent.tcn_window.size
+        if count < required:
             runtime.control.release()
             runtime.tcn_warmup_waits += 1
-            runtime.message = f"正在积累真实连续历史 {count}/32；满 32 帧后开始决策，不重复补帧"
+            runtime.message = f"正在积累真实连续历史 {count}/{required}；满窗后开始决策，不重复补帧"
             runtime._publish("积累历史")
             continue
         if runtime.last_inferred_key == key:
@@ -123,14 +124,14 @@ def run_tcn_loop(runtime, client, restart):
             runtime._publish()
             continue
         if runtime.control.apply_joint(prediction["joint_action_id"]):
-            prediction.update(execution_status="sent", execution_reason="已发送；使用 32 个真实连续帧")
+            prediction.update(execution_status="sent", execution_reason=f"已发送；使用 {required} 个真实连续帧")
             runtime.last_inferred_key = key
             runtime.stats.decision(prediction)
             if runtime.pending:
                 runtime.unconfirmed += 1
             runtime.pending = {"key": key, "serial": int(latest.sampleSerial),
                                "action": (prediction["direction"], prediction["buttons"])}
-            runtime.message = "TCN32 实战中：真实 32 帧窗口；采集独立于发键，不训练模型"
+            runtime.message = f"TCN{required} 实战中：真实连续窗口；采集独立于发键，不训练模型"
         else:
             runtime.control.release()
             prediction.update(execution_status="not_sent", execution_reason="暂停或失焦，已保留真实观测窗口")

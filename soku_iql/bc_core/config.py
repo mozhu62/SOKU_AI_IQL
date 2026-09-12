@@ -41,9 +41,18 @@ MODULES = ("current_encoder", "object_encoder", "tcn", "fusion", "policy_head")
 
 
 def network_version_for(model):
+    if model.get("temporal_mode", "tcn") == "tcn256":
+        return "soku_iql_tcn256_joint144_v1"
+    if model.get("temporal_mode", "tcn") == "tcn64":
+        return "soku_iql_tcn64_joint144_v1"
     if model.get("temporal_mode", "tcn") != "tcn":
         raise ValueError("当前 BC 网络已删除 GRU，model.temporal_mode 必须为 tcn")
     return NETWORK_VERSION
+
+
+def context_frames_for(model):
+    network_version_for(model)
+    return {"tcn": 32, "tcn64": 64, "tcn256": 256}[model.get("temporal_mode", "tcn")]
 
 
 def active_modules(model):
@@ -124,8 +133,8 @@ def validate(config: dict) -> dict:
     for key, lo in (("sequence_length", 1), ("burn_in", 0), ("replays_per_batch", 1), ("cpu_threads", 1)):
         if type(cfg[key]) is not int or not lo <= cfg[key] <= 4096:
             raise ValueError(f"training.{key} 超出范围")
-    if cfg["burn_in"] != 31:
-        raise ValueError("TCN32 必须设置 training.burn_in=31，表示监督段之前的真实上下文，不是 GRU 预热")
+    if cfg["burn_in"] != context_frames_for(config["model"]) - 1:
+        raise ValueError("training.burn_in 必须等于 TCN 上下文长度减一，不是 GRU 预热")
     if type(cfg["amp"]) is not bool or type(cfg["prefetch_batches"]) is not int or not 1 <= cfg["prefetch_batches"] <= 8:
         raise ValueError("amp 必须为布尔值，prefetch_batches 必须在 1 到 8 之间")
     frozen = cfg["frozen_modules"]
@@ -172,4 +181,3 @@ def load_config(path: str | Path) -> dict:
         else:
             result[key] = value
     return validate(result)
-

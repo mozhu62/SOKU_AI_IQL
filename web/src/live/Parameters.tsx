@@ -19,7 +19,7 @@ export function Parameters({state}:{state:Row}){
       <label className="field">推理设备<input value={draft.device??''} onChange={e=>setDraft({...draft,device:e.target.value})} placeholder="cpu / cuda / cuda:0"/></label>
       <label className="field">CPU 线程数<input type="number" min={1} max={64} value={draft.cpu_threads??2} onChange={e=>setDraft({...draft,cpu_threads:+e.target.value})}/></label>
       <label className="field">完整小局数（0 不限）<input type="number" min={0} max={10000} value={draft.rounds??20} onChange={e=>setDraft({...draft,rounds:+e.target.value})}/></label>
-      <label className="field">决策间隔 / 游戏帧<input type="number" min={1} max={1} disabled value={draft.decision_interval_frames??1} onChange={e=>setDraft({...draft,decision_interval_frames:+e.target.value})}/><small>固定为 1；从 DLL 队列补收真实帧，满 32 帧才推理。实际推理频率受性能限制。</small></label>
+      <label className="field">决策间隔 / 游戏帧<input type="number" min={1} max={1} disabled value={draft.decision_interval_frames??1} onChange={e=>setDraft({...draft,decision_interval_frames:+e.target.value})}/><small>固定为 1；从 DLL 队列补收真实帧，满模型要求的窗口才推理。实际推理频率受性能限制。</small></label>
       <label className="field">游戏内 CPU 难度<input value={draft.difficulty??''} onChange={e=>setDraft({...draft,difficulty:e.target.value})}/></label>
       <label className="field">整场结束自动续局<select value={draft.auto_restart?'on':'off'} onChange={e=>setDraft({...draft,auto_restart:e.target.value==='on'})}><option value="on">连续按菜单确认键</option><option value="off">关闭，手动续局</option></select></label>
     </div></Card>
@@ -33,7 +33,7 @@ export function Parameters({state}:{state:Row}){
       {name:'inBattle / matchState',value:`${String(game.in_battle??'未记录')} / ${game.match_state??'未记录'}`},
       {name:'进程 ID / 游戏帧',value:`${game.pid??'未记录'} / ${game.frame??'未记录'}`},
       {name:'网络版本',value:state.network_version||'尚未加载'},
-      {name:'时序结构',value:state.temporal?.mode==='tcn'?'TCN32：228D×32 → 256D':'尚未加载'},
+      {name:'时序结构',value:state.temporal?.mode==='tcn'?`TCN${state.temporal.context_frames}：228D×${state.temporal.context_frames} → 256D`:'尚未加载'},
       {name:'技能类型输入',value:state.uses_resources===true?'每方四槽 variant + mask，同帧配对':state.uses_resources===false?'旧模型，不使用':'尚未加载'},
       {name:'评估报告目录',value:state.summary?.report_directory||'尚未创建'},
     ]} columns={[{key:'name',title:'字段'},{key:'value',title:'运行值'}]}/></Card>

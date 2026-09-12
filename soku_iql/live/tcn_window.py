@@ -11,7 +11,10 @@ class TCNObservationWindow:
 
     size = 32
 
-    def __init__(self):
+    def __init__(self, size=32):
+        if size not in (32, 64, 256):
+            raise ValueError("只支持真实 32/64/256 帧 TCN 窗口")
+        self.size = size
         self.rows = deque(maxlen=self.size)
         self.features = {}
         self.previous_action = self.previous_duration = None
@@ -32,7 +35,7 @@ class TCNObservationWindow:
         if key == self.key:
             return
         if self.key is not None and (key[:2] != self.key[:2] or key[2] != self.key[2] + 1):
-            raise ValueError("TCN 观测不连续；必须先重置片段，禁止重复帧或稀疏帧冒充 32 帧")
+            raise ValueError("TCN 观测不连续；必须先重置片段，禁止重复帧或稀疏帧冒充连续历史")
         self.rows.append((key, observation))
         keys = {frame_key for frame_key, _ in self.rows}
         self.features = {frame_key: feature for frame_key, feature in self.features.items() if frame_key in keys}

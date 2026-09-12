@@ -63,7 +63,7 @@ export function ModelToolbar({state, connected}: {state: Row; connected: boolean
     <div className="model-current">
       <FileCheck2 size={19} className={loaded ? 'positive' : 'muted'}/>
       <div className="model-current-text">
-        <small>{loaded ? '当前已加载模型 · Joint144 / TCN32' : '尚无可运行模型'}</small>
+        <small>{loaded ? '当前已加载模型 · Joint144 / TCN（窗口见时序状态）' : '尚无可运行模型'}</small>
         <strong title={String(currentPath || '')}>{loaded ? filename(currentPath) : '请选择并加载 IQL/BC 策略'}</strong>
         <span title={String(currentPath || '')}>{currentPath || '可直接选择桌面或其他磁盘的 .pt 文件'}</span>
       </div>

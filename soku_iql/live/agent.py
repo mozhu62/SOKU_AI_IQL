@@ -32,7 +32,7 @@ class LiveAgent:
         self.model.to(self.device).eval().requires_grad_(False)
         self.temporal_mode = self.model.temporal_mode
         if config["environment"]["decision_interval_frames"] != 1:
-            raise ValueError("TCN32 按连续游戏帧训练，实战 decision_interval_frames 必须为 1；不能用 32 次稀疏决策冒充 32 帧")
+            raise ValueError("TCN 按连续游戏帧训练，实战 decision_interval_frames 必须为 1，不能用稀疏决策冒充连续帧")
         # 回读方向使用模型训练时的轴约定；Joint Action 的方向已经是屏幕绝对九宫格。
         self.vertical_positive_is_down = bool(package["config"]["data"]["vertical_positive_is_down"])
         self.builder = ObservationBuilder(package["normalization"], config["environment"]["player_side"],
@@ -46,7 +46,7 @@ class LiveAgent:
         if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
             raise ValueError("加载过程中模型文件发生变化，请先复制为固定文件再开始评估")
         self.memory = None
-        self.tcn_window = TCNObservationWindow()
+        self.tcn_window = TCNObservationWindow(self.model.tcn.context_frames)
 
     def reset(self):
         self.memory = None

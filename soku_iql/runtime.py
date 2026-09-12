@@ -124,7 +124,11 @@ def run(config_path, init_bc=None, resume=None, control=None):
             step, samples, actor_updates, best = (package[key] for key in ("step", "samples", "actor_updates", "best_nll"))
             provenance = package["provenance"]
         else:
-            if not all(torch.equal(tensor.cpu(), package["model"][key]) for key, tensor in learner.networks.actor.state_dict().items()):
+            if config["model"]["temporal_mode"] != package["config"]["model"]["temporal_mode"]:
+                LOGGER.warning("Actor 时序扩展 %s→%s：复用全部旧层，新增卷积块随机初始化；输出不保证与原策略相同",
+                               package["config"]["model"]["temporal_mode"], config["model"]["temporal_mode"])
+            actor_state = learner.networks.actor.state_dict()
+            if not all(torch.equal(actor_state[key].cpu(), tensor) for key, tensor in package["model"].items()):
                 raise RuntimeError("BC→IQL Actor 权重未完整对齐")
         # 网络和优化器已接管状态，释放原包，避免整个训练周期额外保留一套 CPU 权重。
         del package

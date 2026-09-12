@@ -91,7 +91,7 @@ class LiveRuntime:
             window = self.agent.tcn_window
             status["temporal_capture"] = {
                 "source": "LiveFrames.v1", "connected": self.frame_queue_connected, "capacity": 128,
-                "required_frames": 32, "ready": len(window) == 32, "buffer_frames": len(window),
+                "required_frames": window.size, "ready": len(window) == window.size, "buffer_frames": len(window),
                 "first_frame": window.rows[0][0][2] if len(window) else None,
                 "last_frame": window.key[2] if window.key else None,
                 "received_slots": self.frame_queue_received, "dropped_slots": self.frame_queue_dropped,
@@ -169,7 +169,7 @@ class LiveRuntime:
             gap = int(payload.battleFrame) - int(old.battleFrame)
             if frame_key(payload)[:2] == frame_key(old)[:2] and gap > 1:
                 self.missing_frames += gap - 1
-                self._reset_memory(f"缺失 {gap - 1} 个游戏帧，TCN32 重新积累连续窗口")
+                self._reset_memory(f"缺失 {gap - 1} 个游戏帧，TCN 重新积累连续窗口")
                 if gap > self.config["environment"]["max_memory_gap_frames"]:
                     self.stats.mark_partial("长时间缺帧，伤害统计不完整")
                     self._reset_memory("长时间缺失游戏帧")

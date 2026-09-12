@@ -11,6 +11,12 @@ import torch
 from .bc_core.models import network_spec
 
 VERSION = "soku_iql_bc_tcn32_joint144_v1"
+VERSION64 = "soku_iql_bc_tcn64_joint144_v1"
+VERSION256 = "soku_iql_bc_tcn256_joint144_v1"
+
+
+def version_for(model):
+    return {"tcn": VERSION, "tcn64": VERSION64, "tcn256": VERSION256}[model["temporal_mode"]]
 
 
 def load_source(path, *, bc=False):
@@ -56,17 +62,19 @@ def atomic_save(path, package):
 
 def load(path):
     package = torch.load(path, map_location="cpu", weights_only=True)
-    if not isinstance(package, dict) or package.get("algorithm") != "iql" or package.get("version") != VERSION:
+    if not isinstance(package, dict) or package.get("algorithm") != "iql" or package.get("version") not in (VERSION, VERSION64, VERSION256):
         raise ValueError("仅接受当前 IQL 续训包；BC 请使用 --init-bc")
     required = {"networks", "optimizers", "scalers", "config", "bc_config", "normalization", "split_hash",
                 "step", "samples", "actor_updates", "best_nll", "rng_cpu", "rng_cuda", "spec", "provenance"}
     if required - package.keys() or package["spec"] != network_spec(package["config"]["model"]):
         raise ValueError("IQL checkpoint 不完整或 BC 架构不匹配")
+    if package["version"] != version_for(package["config"]["model"]):
+        raise ValueError("IQL 包版本与时序结构不一致")
     return package
 
 
 def save(path, learner, bc_config, normalization, split_hash, step, samples, actor_updates, best_nll, provenance):
-    atomic_save(path, dict(algorithm="iql", version=VERSION, spec=learner.networks.actor.spec,
+    atomic_save(path, dict(algorithm="iql", version=version_for(learner.config["model"]), spec=learner.networks.actor.spec,
                           networks=cpu(learner.networks.state_dict()),
                           optimizers={k: cpu(v.state_dict()) for k, v in learner.optimizers.items()},
                           scalers={k: v.state_dict() for k, v in learner.scalers.items()},
@@ -82,6 +90,7 @@ def export_actor(path, learner, bc_config, normalization, split_hash, step, samp
     config["model"] = copy.deepcopy(learner.config["model"])
     config["data"] = copy.deepcopy(learner.config["data"])
     config["training"].update(learning_rate=learner.config["iql"]["actor_lr"],
+                              burn_in=learner.config["training"]["burn_in"],
                               weight_decay=learner.config["iql"]["weight_decay"], frozen_modules=[])
     config.setdefault("palr", {})["enabled"] = False
     config.setdefault("keyframe_weighting", {})["enabled"] = False

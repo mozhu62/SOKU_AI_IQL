@@ -32,7 +32,7 @@ def validate_resume(config, previous):
             current = {k: v for k, v in current.items() if k != "n_step"}
             old = {k: v for k, v in old.items() if k != "n_step"}
         if current != old:
-            raise ValueError(f"续训不能静默改变 {key}，请使用保存时的配置")
+            raise ValueError(f"续训不能静默改变 {key}，请使用保存时的配置；升级 TCN256 请先运行 scripts/migrate_tcn256.py")
     # 验证采样依赖 batch_size/replays_per_batch；改变后不能再沿用旧 best_nll。
     for key in ("burn_in", "sequence_length", "batch_size", "replays_per_batch", "validation_batches"):
         if config["training"][key] != previous["training"][key]:
@@ -77,8 +77,9 @@ def load(path, source):
                 "log_interval", "save_interval", "validation_interval", "validation_batches", "prefetch_batches"):
         if type(t[key]) is not int or t[key] < 1:
             raise ValueError(f"training.{key} 必须为正整数")
-    if t["burn_in"] != 31 or t["prefetch_batches"] > 8 or type(t["amp"]) is not bool:
-        raise ValueError("TCN32 必须为 burn_in=31，预取不超过 8，amp 必须是布尔值")
+    if type(t["burn_in"]) is not int or t["burn_in"] not in (31, 63, 255) or t["prefetch_batches"] > 8 or type(t["amp"]) is not bool:
+        raise ValueError("TCN 历史为 burn_in=31/63/255，预取不超过 8，amp 必须是布尔值")
+    cfg["model"]["temporal_mode"] = {31: "tcn", 63: "tcn64", 255: "tcn256"}[t["burn_in"]]
     for key, value in q.items():
         if type(value) not in (int, float) or not math.isfinite(value):
             raise ValueError(f"iql.{key} 必须为有限数值")

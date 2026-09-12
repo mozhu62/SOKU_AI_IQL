@@ -97,7 +97,7 @@ class LiveFrameClient:
         self._close_ring()
         mapping = self.kernel.OpenFileMappingW(FILE_MAP_READ, False, f"Local\\SokuDataBridge.LiveFrames.v1.{pid}")
         if not mapping:
-            self.wait_reason = "TCN32 需要 LiveFrames.v1 逐帧队列：请构建并替换新版 SokuDataBridge.dll 后重启游戏；不使用短历史发键"
+            self.wait_reason = "TCN 需要 LiveFrames.v1 逐帧队列：请构建并替换新版 SokuDataBridge.dll 后重启游戏；不使用短历史发键"
             return False
         address = self.kernel.MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, MAPPING_BYTES)
         if not address:

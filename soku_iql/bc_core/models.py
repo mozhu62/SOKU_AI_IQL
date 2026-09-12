@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from .action_space import ACTION_COUNT, ACTION_SCHEMA
-from .config import MODEL_DEFAULTS, active_modules, network_version_for
+from .config import MODEL_DEFAULTS, active_modules, network_version_for, context_frames_for
 from .nn_modules import (
     CurrentStateEncoder,
     FusionEncoder,
@@ -24,6 +24,7 @@ def network_spec(cfg):
         raise ValueError(f"模型包含旧架构或未知字段：{sorted(unknown)}")
     cfg = {**MODEL_DEFAULTS, **cfg}
     input_dim = current_state_input_dim(cfg)
+    context = context_frames_for(cfg)
     if input_dim != 228:
         raise ValueError(f"当前网络版本固定 228D 状态输入，实际 schema 生成 {input_dim}D")
     return {
@@ -36,14 +37,14 @@ def network_spec(cfg):
         "temporal": {
             "mode": "tcn",
             "input_dim": input_dim,
-            "input_semantics": "last_32_expanded_state_features",
+            "input_semantics": f"last_{context}_expanded_state_features",
             "output_dim": cfg["temporal_output_dim"],
-            "context_frames": TemporalConvEncoder.context_frames,
+            "context_frames": context,
             "convolutions_per_block": 2,
             "kernel_size": 2,
             "causal_stem": True,
-            "dilations": [1, 2, 4, 8],
-            "receptive_field_frames": 32,
+            "dilations": [2**i for i in range(context.bit_length()-2)],
+            "receptive_field_frames": context,
             "gru_removed": True,
         },
         "fusion": {
@@ -94,6 +95,7 @@ class BCNetwork(nn.Module):
             self.current_encoder.input_dim,
             cfg["temporal_hidden_dim"],
             cfg["temporal_output_dim"],
+            context_frames=context_frames_for(cfg),
         )
         self.fusion = FusionEncoder(cfg)
         self.policy_head = nn.Linear(cfg["fusion_dim"], ACTION_COUNT)
@@ -138,13 +140,12 @@ class BCNetwork(nn.Module):
     def _main_observation(obs, burn_in):
         return {key: value[:, burn_in:] for key, value in obs.items()}
 
-    @staticmethod
-    def _align_prefix(features, burn_in, burn_lengths):
+    def _align_prefix(self, features, burn_in, burn_lengths):
         mask = torch.ones(features.shape[:2], dtype=torch.bool, device=features.device)
         if not burn_in:
             return features, mask
-        if burn_in != 31 or burn_lengths is None:
-            raise ValueError("TCN32 训练需要 31 帧前导上下文和每条样本的真实历史长度")
+        if burn_in != self.tcn.context_frames - 1 or burn_lengths is None:
+            raise ValueError(f"TCN{self.tcn.context_frames} 前导历史长度不匹配")
         lengths = burn_lengths.to(features.device).long()
         offsets = torch.arange(burn_in, device=features.device)[None] - (burn_in - lengths[:, None])
         prefix_mask = offsets >= 0
@@ -176,19 +177,18 @@ class BCNetwork(nn.Module):
 
     @torch.no_grad()
     def step_logits(self, obs, memory=None):
-        """单帧接口保留此前 31 个 228D 状态，与当前帧组成 32 帧窗口。"""
+        """保留 context_frames-1 个历史状态，与当前帧组成模型声明的窗口。"""
         state = self.state_features(obs)
         if state.ndim != 2:
             raise ValueError("单帧推理 observation 必须生成 [batch,228] 状态")
         if memory is not None and (
             memory.ndim != 3
             or memory.shape[0] != state.shape[0]
-            or memory.shape[1] > 31
+            or memory.shape[1] > self.tcn.context_frames - 1
             or memory.shape[2] != self.memory_dim
         ):
-            raise ValueError(f"TCN32 历史必须为 [batch,最多31帧,{self.memory_dim}]")
+            raise ValueError(f"TCN 历史必须为 [batch,最多{self.tcn.context_frames-1}帧,{self.memory_dim}]")
         history = state[:, None] if memory is None else torch.cat((memory, state[:, None]), dim=1)
         temporal = self.tcn(history)[:, -1]
         current = self.current_encoder.forward_features(state)
-        return self._fuse(current, temporal, self.encode_objects(obs)), history[:, -31:].detach()
-
+        return self._fuse(current, temporal, self.encode_objects(obs)), history[:, -(self.tcn.context_frames-1):].detach()
