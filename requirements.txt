@@ -1,0 +1,4 @@
+numpy>=1.26
+torch>=2.3
+PyYAML>=6
+filelock>=3.13

@@ -1,0 +1,77 @@
+{
+  "source": "../soku_bc/soku_bc",
+  "date": "2026-09-12",
+  "normalization": "UTF-8, CRLF normalized to LF, trailing LF removed",
+  "files": [
+    {
+      "name": "action_diagnostics.py",
+      "identical": true,
+      "sha256": "3a47bca50e1b90fe39f2316eda5f9f1d9d6982b929f3f0cc5161e30d4834a82a"
+    },
+    {
+      "name": "action_space.py",
+      "identical": true,
+      "sha256": "c87a2aef29569d36c309592f8d2f5d91eb091e8d74a86ce9ac9955ce13ee11a3"
+    },
+    {
+      "name": "checkpoint.py",
+      "identical": true,
+      "sha256": "ded3b5bf508fd7d7fa13f02aabbb207c07cde81c9feac62a3fff1b7e4456baf3"
+    },
+    {
+      "name": "config.py",
+      "identical": true,
+      "sha256": "20d5cb9ce7609490f1c5f95265b9df6426d0c8a9d2b98d1404788237f5fe7913"
+    },
+    {
+      "name": "dataset.py",
+      "identical": true,
+      "sha256": "cd09f8a51087db091bbb04a2d56a2c6134e9ea6f465d017c8da465954952f9bf"
+    },
+    {
+      "name": "embeddings.py",
+      "identical": true,
+      "sha256": "16f04cd9d2f2fb35a61447559987e2fb905b3489d7a44b6f31aead7498f6a2b9"
+    },
+    {
+      "name": "models.py",
+      "identical": true,
+      "sha256": "652cca88132a922ae81bbf15591a2cf82278c757baf3ee4483543da7ebdfb870"
+    },
+    {
+      "name": "nn_modules.py",
+      "identical": true,
+      "sha256": "f25939d9db9d0a7e4e4bf8c1a14828505d95bed9fd24248abcd1656179745e6e"
+    },
+    {
+      "name": "resources.py",
+      "identical": true,
+      "sha256": "e4a62f27fb0784898fab5a964616415aeeaadda61c6e437cbf728342746837db"
+    },
+    {
+      "name": "resource_encoder.py",
+      "identical": true,
+      "sha256": "1b13272a30cf0961ff14e06720d57eba21ee70c8a8ff40c8d5fcf0b51bb7c162"
+    },
+    {
+      "name": "schema.py",
+      "identical": true,
+      "sha256": "fc3d52f0d6dd316061711228291680e71d5e24c948494a1aea541ca146282c5d"
+    },
+    {
+      "name": "storage.py",
+      "identical": true,
+      "sha256": "081192ce2b7e7e6cd75fc5f69b07c996813ff0561b97b0cafc667aa072e0cac7"
+    },
+    {
+      "name": "temporal.py",
+      "identical": true,
+      "sha256": "83a2ee768063a5a99c6f57c68f47869e56bc69146b9e4db25319f95125b45124"
+    },
+    {
+      "name": "__init__.py",
+      "identical": true,
+      "sha256": "655eecce09724753b039dc062428d11aae9000721b2da0abd68fa7c6da279157"
+    }
+  ]
+}
