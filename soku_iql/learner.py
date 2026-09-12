@@ -8,6 +8,7 @@ from torch.nn import functional as F
 
 from .models import IQLNetworks
 from .actor_sampling import build_actor_mask
+from .actor_weighting import weighted_actor_loss
 
 
 def tensor_batch(value, device):
@@ -96,12 +97,17 @@ class Learner:
             target = td_target(batch["reward"], batch["terminal"], new_value[:, 1:], cfg["gamma"])
         actor_updated, actor_grad, actor_loss = False, None, None
         sampling = self.config.get("actor_sampling", {})
+        weighting = self.config.get("actor_weighting", {})
+        weighting_enabled = weighting.get("enabled", False)
+        if weighting_enabled and sampling.get("enabled", False):
+            raise ValueError("Actor 筛选与类别加权不能同时启用")
+        neutral_weight = weighting.get("neutral_weight", .25) if weighting_enabled else 1.0
         actor_mask, sampling_stats = build_actor_mask(action, mask, **sampling)
         actor_skip_reason = "warmup" if step < cfg["actor_warmup_steps"] else "no_samples" if not sampling_stats["actor_samples"] else None
         if actor_skip_reason is None:
             logits = self.forward(n.actor, batch)[:, :-1]
             ce = F.cross_entropy(logits[actor_mask], action[actor_mask], reduction="none")
-            actor_loss = (weights[actor_mask] * ce).mean()
+            actor_loss = weighted_actor_loss(ce, weights[actor_mask], action[actor_mask], neutral_weight)
             actor_updated, actor_grad = self.optimize("actor", actor_loss)
             if not actor_updated:
                 actor_skip_reason = "amp"
@@ -122,6 +128,7 @@ class Learner:
         if diagnostics:
             result.update(self.validate_batch(raw))
         result.update(sampling_stats, actor_skip_reason=actor_skip_reason,
+                      actor_weighting_enabled=weighting_enabled, actor_neutral_weight=neutral_weight,
                       actor_optimized_samples=sampling_stats["actor_samples"] if actor_updated else 0)
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)

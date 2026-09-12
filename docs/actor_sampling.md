@@ -1,6 +1,18 @@
 # Actor Neutral 监督筛选
 
-`configs/iql_suika.yaml` 已开启：
+当前默认配置已改为损失加权，下面的筛选方案仅作为旧模式保留，默认关闭。二者禁止同时启用。
+
+```yaml
+actor_sampling:
+  enabled: false
+actor_weighting:
+  enabled: true
+  neutral_weight: 0.25
+```
+
+加权模式保留所有有效监督帧，Actor loss 为 `sum(category_weight * detached_advantage_weight * CE) / sum(category_weight)`。Neutral 类别权重为 0.25，其他动作均为 1；不是将 Neutral 样本比例限制到 25%。全 Neutral 批次仍更新 Actor，类别权重在分子分母抵消。Q/V、验证、网络和实战输入不变。新日志记录 `actor_weighting_enabled` 和实际生效的 `actor_neutral_weight`；网页展示加权状态。旧 checkpoint 可加载，重启时按 YAML 应用；目标权重改变会打印警告。未提供在线热修改。
+
+以下是旧筛选模式说明（仅手动重新启用且关闭加权后生效）：
 
 ```yaml
 actor_sampling:

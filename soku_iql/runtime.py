@@ -18,7 +18,7 @@ from filelock import FileLock
 
 from . import checkpoint
 from .bc_core.storage import atomic_json
-from .config import load, validate_resume, ACTOR_SAMPLING
+from .config import load, validate_resume, ACTOR_SAMPLING, ACTOR_WEIGHTING
 from .dataset import IQLReplayStore, fixed_split
 from .learner import Learner
 
@@ -73,6 +73,10 @@ def run(config_path, init_bc=None, resume=None, control=None):
     if resume:
         validate_resume(config, package["config"])
         previous_sampling = package["config"].get("actor_sampling", ACTOR_SAMPLING)
+        previous_weighting = package["config"].get("actor_weighting", ACTOR_WEIGHTING)
+        if previous_weighting != config["actor_weighting"]:
+            LOGGER.warning("Actor 类别加权变更：%s -> %s；保留模型和优化器，训练目标权重已改变",
+                           previous_weighting, config["actor_weighting"])
         if previous_sampling != config["actor_sampling"]:
             LOGGER.warning("Actor 监督采样规则变更：%s -> %s；保留模型和优化器，但不是原分布的精确续训",
                            previous_sampling, config["actor_sampling"])

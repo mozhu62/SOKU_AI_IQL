@@ -16,6 +16,7 @@ IQL = dict(gamma=0.99, expectile=0.7, advantage_beta=3.0, max_weight=100.0,
            weight_decay=0.0, actor_warmup_steps=1000)
 REWARD = dict(damage_dealt=0.001, damage_taken=0.001)
 ACTOR_SAMPLING = dict(enabled=False, neutral_max_fraction=0.25)
+ACTOR_WEIGHTING = dict(enabled=False, neutral_weight=0.25)
 
 
 def resolve(path):
@@ -35,13 +36,13 @@ def validate_resume(config, previous):
 
 def load(path, source):
     supplied = yaml.safe_load(resolve(path).read_text(encoding="utf-8-sig")) or {}
-    allowed = {"data", "training", "iql", "reward", "output", "actor_sampling"}
+    allowed = {"data", "training", "iql", "reward", "output", "actor_sampling", "actor_weighting"}
     if not isinstance(supplied, dict) or set(supplied) - allowed:
-        raise ValueError("IQL 配置只接受 data/training/iql/reward/output/actor_sampling；模型与 seed 继承 BC")
+        raise ValueError("IQL 配置只接受 data/training/iql/reward/output/actor_sampling/actor_weighting；模型与 seed 继承 BC")
     cfg = dict(seed=source["seed"], model=copy.deepcopy(source["model"]),
                data=copy.deepcopy(source["data"]), training=copy.deepcopy(TRAINING),
                iql=copy.deepcopy(IQL), reward=copy.deepcopy(REWARD), actor_sampling=copy.deepcopy(ACTOR_SAMPLING),
-               output=dict(directory="outputs/iql_suika"))
+               actor_weighting=copy.deepcopy(ACTOR_WEIGHTING), output=dict(directory="outputs/iql_suika"))
     for section, values in supplied.items():
         if not isinstance(values, dict) or set(values) - set(cfg[section]):
             raise ValueError(f"未知 {section} 参数")
@@ -53,6 +54,12 @@ def load(path, source):
         raise ValueError("BC→IQL 不允许改变划分比例或方向编码")
     t, q = cfg["training"], cfg["iql"]
     sampling = cfg["actor_sampling"]
+    weighting = cfg["actor_weighting"]
+    weight = weighting["neutral_weight"]
+    if type(weighting["enabled"]) is not bool or type(weight) not in (int, float) or not math.isfinite(weight) or not 0 < weight <= 1:
+        raise ValueError("actor_weighting.enabled 必须是布尔值，neutral_weight 必须在 (0,1] 内")
+    if weighting["enabled"] and sampling["enabled"]:
+        raise ValueError("Actor 筛选与类别加权不能同时启用，请关闭 actor_sampling.enabled")
     fraction = sampling["neutral_max_fraction"]
     if type(sampling["enabled"]) is not bool or type(fraction) not in (int, float) or not math.isfinite(fraction) or not 0 <= fraction <= 1:
         raise ValueError("actor_sampling.enabled 必须为布尔值，neutral_max_fraction 必须为 [0,1] 有限数值")

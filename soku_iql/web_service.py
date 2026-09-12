@@ -160,7 +160,7 @@ def create_app(runtime, port):
     @app.get("/api/config")
     def export_config():
         cfg = runtime.snapshot()["config"]
-        return JSONResponse({k: cfg[k] for k in ("data", "training", "iql", "reward", "output", "actor_sampling") if k in cfg},
+        return JSONResponse({k: cfg[k] for k in ("data", "training", "iql", "reward", "output", "actor_sampling", "actor_weighting") if k in cfg},
                             headers={"Content-Disposition": 'attachment; filename="iql_runtime_config.json"'})
 
     @app.get("/api/actions")

@@ -29,8 +29,12 @@ iql:
   actor_warmup_steps: 1000
 actor_sampling:
   # 仅限制 Actor 有效监督帧；方向 5 且 ABCD 全松开才是 Neutral。
-  enabled: true
+  enabled: false
   neutral_max_fraction: 0.25
+actor_weighting:
+  # 全部有效帧照常监督，仅降低 Neutral 相对损失权重。
+  enabled: true
+  neutral_weight: 0.25
 reward:
   damage_dealt: 0.002
   damage_taken: 0.001
