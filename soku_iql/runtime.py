@@ -72,6 +72,9 @@ def run(config_path, init_bc=None, resume=None, control=None):
     config = load(config_path, bc_config)
     if resume:
         validate_resume(config, package["config"])
+        if config["iql"]["n_step"] != package["config"]["iql"].get("n_step", 1):
+            LOGGER.warning("TD 回报跨度变更：%s -> %s；保留权重和优化器，TD 误差不能与旧跨度直接比较",
+                           package["config"]["iql"].get("n_step", 1), config["iql"]["n_step"])
         previous_sampling = package["config"].get("actor_sampling", ACTOR_SAMPLING)
         previous_weighting = package["config"].get("actor_weighting", ACTOR_WEIGHTING)
         if previous_weighting != config["actor_weighting"]:

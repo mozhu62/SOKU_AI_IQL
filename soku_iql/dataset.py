@@ -55,6 +55,8 @@ class IQLReplayStore(ReplayStore):
         names = self.split[split]
         weights = np.asarray([self.info[name]["transitions"] for name in names], np.float64)
         batch, length, burn = cfg["batch_size"], cfg["sequence_length"], cfg["burn_in"]
+        q = getattr(self, "config", {}).get("iql", {})
+        n_step, gamma = q.get("n_step", 1), q.get("gamma", .99)
         chosen = rng.choice(len(names), min(batch, cfg["replays_per_batch"]), p=weights / weights.sum())
         pieces = []
         for shard_id, rows in zip(chosen, np.array_split(np.arange(batch), len(chosen))):
@@ -66,15 +68,36 @@ class IQLReplayStore(ReplayStore):
             positions = starts + picks - prior
             burn_lengths = np.minimum(burn, positions - starts)
             prefix = positions[:, None] - burn_lengths[:, None] + np.arange(burn)
-            main = positions[:, None] + np.arange(length + 1)
-            # 多取真实后继一帧，所有网络共用同一时序窗口；禁止独立 next_state 丢失历史。
+            main = positions[:, None] + np.arange(length + n_step)
+            # 尾部补足 N 步真实后继；TCN 因果前向，未来帧不进入当前动作预测。
             indices = np.concatenate((np.minimum(prefix, positions[:, None]), np.minimum(main, ends[:, None])), 1)
-            labels = np.minimum(main[:, :-1], ends[:, None] - 1)
-            mask = main[:, :-1] < ends[:, None]
+            labels = np.minimum(main[:, :length], ends[:, None] - 1)
+            mask = main[:, :length] < ends[:, None]
+            returns, discounts, terminals, steps = n_step_returns(
+                shard["iql_reward"], shard["iql_terminal"], main[:, :length], ends[:, None], n_step, gamma)
             pieces.append(dict(observation=self.observation(shard, indices), burn_lengths=burn_lengths.astype(np.int64),
                                action=shard["joint_action_id"][labels], reward=shard["iql_reward"][labels],
                                terminal=shard["iql_terminal"][labels], mask=mask,
+                               n_step_reward=returns, n_step_discount=discounts, n_step_terminal=terminals,
+                               n_step_steps=steps, bootstrap_index=np.arange(length)[None, :] + steps,
                                previous_action=shard["previous_expert_action_id"][labels]))
         result = {k: np.concatenate([x[k] for x in pieces]) for k in pieces[0] if k != "observation"}
         result["observation"] = {k: np.concatenate([x["observation"][k] for x in pieces]) for k in pieces[0]["observation"]}
         return result
+
+
+def n_step_returns(rewards, terminal, positions, ends, n_step, gamma):
+    total = np.zeros(positions.shape, np.float32)
+    discount = np.ones(positions.shape, np.float32)
+    done = np.zeros(positions.shape, bool)
+    steps = np.zeros(positions.shape, np.int64)
+    for offset in range(n_step):
+        index = positions + offset
+        active = (index < ends) & ~done
+        safe = np.minimum(index, len(rewards)-1)
+        total += np.where(active, discount * rewards[safe], 0)
+        discount = np.where(active, discount * gamma, discount)
+        steps += active
+        done |= active & terminal[safe]
+    # ends 是连续有效转移的开区间终点；截断可从最后真实后继 bootstrap，终局不可。
+    return total, discount, done, steps

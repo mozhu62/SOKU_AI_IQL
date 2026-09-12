@@ -11,7 +11,7 @@ TRAINING = dict(device="auto", total_steps=100000, batch_size=16, sequence_lengt
                 burn_in=31, replays_per_batch=4, cpu_threads=4, amp=True,
                 max_grad_norm=10.0, log_interval=20, save_interval=1000,
                 validation_interval=1000, validation_batches=20, prefetch_batches=2)
-IQL = dict(gamma=0.99, expectile=0.7, advantage_beta=3.0, max_weight=100.0,
+IQL = dict(gamma=0.99, n_step=1, expectile=0.7, advantage_beta=3.0, max_weight=100.0,
            target_tau=0.005, actor_lr=0.0001, critic_lr=0.0003, value_lr=0.0003,
            weight_decay=0.0, actor_warmup_steps=1000)
 REWARD = dict(damage_dealt=0.001, damage_taken=0.001)
@@ -26,7 +26,12 @@ def resolve(path):
 
 def validate_resume(config, previous):
     for key in ("model", "seed", "iql", "reward"):
-        if config[key] != previous[key]:
+        current, old = config[key], previous[key]
+        if key == "iql":
+            # N-step 可显式切换；其余算法参数继续执行原有续训约束。
+            current = {k: v for k, v in current.items() if k != "n_step"}
+            old = {k: v for k, v in old.items() if k != "n_step"}
+        if current != old:
             raise ValueError(f"续训不能静默改变 {key}，请使用保存时的配置")
     # 验证采样依赖 batch_size/replays_per_batch；改变后不能再沿用旧 best_nll。
     for key in ("burn_in", "sequence_length", "batch_size", "replays_per_batch", "validation_batches"):
@@ -53,6 +58,8 @@ def load(path, source):
     if cfg["data"]["train_fraction"] != .8 or cfg["data"]["vertical_positive_is_down"] != source["data"]["vertical_positive_is_down"]:
         raise ValueError("BC→IQL 不允许改变划分比例或方向编码")
     t, q = cfg["training"], cfg["iql"]
+    if type(q["n_step"]) is not int or not 1 <= q["n_step"] <= 128:
+        raise ValueError("iql.n_step 必须为 1～128 的整数")
     sampling = cfg["actor_sampling"]
     weighting = cfg["actor_weighting"]
     weight = weighting["neutral_weight"]

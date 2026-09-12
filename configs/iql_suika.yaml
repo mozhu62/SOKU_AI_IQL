@@ -18,6 +18,7 @@ training:
   replays_per_batch: 8
   cpu_threads: 4
 iql:
+  n_step: 3
   gamma: 0.99
   expectile: 0.7
   advantage_beta: 3.0
