@@ -126,3 +126,17 @@ def test_resume_preserves_sampling_and_validation_baseline():
         changed["training"][key] += 1
         with pytest.raises(ValueError, match=key):
             validate_resume(changed, original)
+
+
+def test_live_adapter_reads_actor_from_full_iql(tmp_path):
+    from soku_iql.live.policy_checkpoint import load as live_load
+    bc, cfg = config()
+    learner = Learner(cfg)
+    path = tmp_path / "iql.pt"
+    checkpoint.save(path, learner, bc, {}, "fixed", 0, 0, 0, 1.0, {})
+    package = live_load(path)
+    assert package["provenance"]["trained_algorithm"] == "iql"
+    original = learner.networks.actor.state_dict()
+    assert package["model"].keys() == original.keys()
+    assert all(torch.equal(v, package["model"][k]) for k, v in original.items())
+    assert "networks" not in package and "optimizers" not in package

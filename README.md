@@ -2,12 +2,16 @@
 
 本目录是独立 Python 项目，不修改 `soku_bc`、`soku_cql` 或 `soku_ai`。保留当前 BC 的 228D 扩展状态输入、Current 256、TCN32 256、每侧最近三个对象、Fusion 1024、Joint144 分类策略。不是 DQfD，也不把 BC logits 直接作为 Q 值。
 
+现已增加独立的浏览器训练工作台（默认 8806）和 Windows 实战工作台（默认 8826），不依赖 BC 项目安装。详见 [工作台安装、启动与安全说明](docs/workbench.md)。本轮新增界面和控制代码尚未构建/运行验收，之前的离线验收记录不覆盖本轮改动。
+
 ## 首次训练
 
 使用已能运行 BC、且 PyTorch/CUDA 与驱动匹配的 Python 环境。在本项目根目录：
 
 ```powershell
 pip install -e .
+npm --prefix web ci
+npm --prefix web run build
 python scripts/train.py --config configs/iql_suika.yaml --init-bc ../soku_bc/outputs/bc_suika_tcn32_joint144/last.pt
 ```
 
@@ -23,7 +27,9 @@ python scripts/train.py --config configs/iql_suika.yaml --init-bc ../soku_bc/out
 python scripts/train.py --config configs/iql_suika.yaml --resume outputs/iql_suika/last.pt
 ```
 
-Ctrl+C 请求在完整更新结束后保存；不启动游戏。默认训练日志间隔 20 步、保存/验证间隔 1000 步。没有新增浏览器服务或端口，也不依赖 BC 的网页服务。
+默认启动浏览器服务，终端打印地址；准备完成后在网页点击“开始 / 继续”，加 `--start` 可自动开始。纯命令行训练加 `--headless`，无需构建前端。Ctrl+C 请求在完整更新结束后保存；训练入口不启动游戏。默认训练日志间隔 20 步、保存/验证间隔 1000 步。
+
+Windows 实战入口：`python scripts/play.py --config configs/live_eval.yaml`。网页顶部选择模型后加载，支持 IQL 完整包、Actor 导出包和当前 BC 基线。实战保持独立服务，沿用当前游戏采集 DLL，不在 Linux 训练服务器发送游戏按键。
 
 续训锁定 batch_size、sequence_length、burn_in、replays_per_batch、validation_batches，以及 seed/模型/IQL/奖励定义，保证固定验证样本与已有 best 的比较口径不变。设备、缓存、总步数及记录间隔可以调整；跨设备数值不承诺逐 bit 重现。
 

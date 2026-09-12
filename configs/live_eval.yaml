@@ -1,0 +1,42 @@
+# 这是独立的 Windows 实战验证配置，不改变训练配置和模型权重。
+checkpoint: outputs/iql_suika/actor_bc.pt
+device: cuda
+cpu_threads: 2
+output: outputs/evaluations
+rounds: 20
+environment:
+  # 仅指定控制侧，不限制双方角色 ID；left=1P，right=2P。
+  player_side: left
+  # 主模式 2 是人机；正常游戏子模式可为 0/1，只有子模式 2 是 REP。
+  active_match_states: [2]
+  cpu_difficulty_label: 未确认，请按游戏设置填写
+  # REP 训练以每游戏帧为一步；默认同样每帧决策，不使用宏动作。
+  decision_interval_frames: 1
+  max_inference_lag_frames: 6
+  max_memory_gap_frames: 6
+  max_snapshot_age_ms: 250
+  stale_timeout_seconds: 1.0
+  focus_delay_seconds: 0.3
+  watchdog_seconds: 1.0
+  poll_seconds: 0.002
+keyboard:
+  up: W
+  down: S
+  left: A
+  right: D
+  melee: J
+  dash: K
+  light_projectile: I
+  heavy_projectile: L
+  # 本实验只控制方向与 ABCD，不发送切卡或用卡。
+restart:
+  enabled: true
+  confirm_key: Z
+  hold_seconds: 0.05
+  interval_seconds: 0.25
+  timeout_seconds: 60.0
+  max_presses: 240
+web:
+  host: 127.0.0.1
+  port: 8826
+  port_attempts: 10

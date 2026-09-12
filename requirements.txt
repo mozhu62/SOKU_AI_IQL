@@ -2,3 +2,5 @@ numpy>=1.26
 torch>=2.3
 PyYAML>=6
 filelock>=3.13
+fastapi>=0.115
+uvicorn>=0.30

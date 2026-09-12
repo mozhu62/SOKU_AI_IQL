@@ -16,3 +16,6 @@ runs/
 *.csv
 *.tmp
 *.lock
+node_modules/
+web/dist/
+*.tsbuildinfo
