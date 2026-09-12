@@ -27,6 +27,10 @@ iql:
   critic_lr: 0.0003
   value_lr: 0.0003
   actor_warmup_steps: 1000
+actor_sampling:
+  # 仅限制 Actor 有效监督帧；方向 5 且 ABCD 全松开才是 Neutral。
+  enabled: true
+  neutral_max_fraction: 0.25
 reward:
   damage_dealt: 0.002
   damage_taken: 0.001

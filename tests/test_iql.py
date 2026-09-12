@@ -40,6 +40,23 @@ def batch():
                 terminal=torch.tensor([[False, True]]), reward=torch.tensor([[1., -1.]]))
 
 
+def test_all_neutral_skips_actor_but_updates_qv():
+    _, cfg = config()
+    cfg['actor_sampling'] = dict(enabled=True, neutral_max_fraction=.25)
+    learner = Learner(cfg)
+    raw = batch()
+    raw['action'].fill_(64)
+    before = {key: value.clone() for key, value in learner.networks.actor.state_dict().items()}
+    result = learner.train_batch(raw, step=1)
+    assert result['actor_skip_reason'] == 'no_samples'
+    assert result['actor_loss'] is None and not result['actor_updated']
+    assert result['actor_optimized_samples'] == 0
+    assert result['critic_updated'] and result['value_updated']
+    assert result['samples'] == 2
+    for key, value in learner.networks.actor.state_dict().items():
+        assert torch.equal(before[key], value)
+
+
 def test_loss_definitions():
     diff = torch.tensor([-2., 2.])
     torch.testing.assert_close(expectile_loss(diff, .7), torch.tensor([1.2, 2.8]))

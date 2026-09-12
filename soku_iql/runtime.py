@@ -18,7 +18,7 @@ from filelock import FileLock
 
 from . import checkpoint
 from .bc_core.storage import atomic_json
-from .config import load, validate_resume
+from .config import load, validate_resume, ACTOR_SAMPLING
 from .dataset import IQLReplayStore, fixed_split
 from .learner import Learner
 
@@ -72,6 +72,10 @@ def run(config_path, init_bc=None, resume=None, control=None):
     config = load(config_path, bc_config)
     if resume:
         validate_resume(config, package["config"])
+        previous_sampling = package["config"].get("actor_sampling", ACTOR_SAMPLING)
+        if previous_sampling != config["actor_sampling"]:
+            LOGGER.warning("Actor 监督采样规则变更：%s -> %s；保留模型和优化器，但不是原分布的精确续训",
+                           previous_sampling, config["actor_sampling"])
     output = Path(config["output"]["directory"])
     source_path = Path(init_bc or resume).resolve()
     if control:

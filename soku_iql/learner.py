@@ -7,6 +7,7 @@ import torch
 from torch.nn import functional as F
 
 from .models import IQLNetworks
+from .actor_sampling import build_actor_mask
 
 
 def tensor_batch(value, device):
@@ -94,11 +95,18 @@ class Learner:
             # Q 只回归数据中的真实动作；不做 argmax、CQL logsumexp 或跨终局 bootstrap。
             target = td_target(batch["reward"], batch["terminal"], new_value[:, 1:], cfg["gamma"])
         actor_updated, actor_grad, actor_loss = False, None, None
-        if step >= cfg["actor_warmup_steps"]:
+        sampling = self.config.get("actor_sampling", {})
+        actor_mask, sampling_stats = build_actor_mask(action, mask, **sampling)
+        actor_skip_reason = "warmup" if step < cfg["actor_warmup_steps"] else "no_samples" if not sampling_stats["actor_samples"] else None
+        if actor_skip_reason is None:
             logits = self.forward(n.actor, batch)[:, :-1]
-            ce = F.cross_entropy(logits[mask], action[mask], reduction="none")
-            actor_loss = (weights[mask] * ce).mean()
+            ce = F.cross_entropy(logits[actor_mask], action[actor_mask], reduction="none")
+            actor_loss = (weights[actor_mask] * ce).mean()
             actor_updated, actor_grad = self.optimize("actor", actor_loss)
+            if not actor_updated:
+                actor_skip_reason = "amp"
+        else:
+            self.optimizers["actor"].zero_grad(set_to_none=True)
         q1 = self.forward(n.q1, batch)[:, :-1].gather(-1, action[..., None]).squeeze(-1)
         q2 = self.forward(n.q2, batch)[:, :-1].gather(-1, action[..., None]).squeeze(-1)
         q_loss = ((q1 - target).square() + (q2 - target).square())[mask].mean()
@@ -113,6 +121,8 @@ class Learner:
                       weight_max=float(weights[mask].max()), warmup=step < cfg["actor_warmup_steps"])
         if diagnostics:
             result.update(self.validate_batch(raw))
+        result.update(sampling_stats, actor_skip_reason=actor_skip_reason,
+                      actor_optimized_samples=sampling_stats["actor_samples"] if actor_updated else 0)
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
         result["optimization_seconds"] = time.perf_counter() - started
