@@ -18,6 +18,8 @@ training:
   replays_per_batch: 8
   cpu_threads: 4
 iql:
+  # 消融：优势权重恒为1，Actor从第一步更新。
+  actor_advantage_weighting: false
   n_step: 1
   gamma: 0.99
   expectile: 0.7
@@ -27,14 +29,14 @@ iql:
   actor_lr: 0.0001
   critic_lr: 0.0003
   value_lr: 0.0003
-  actor_warmup_steps: 100000
+  actor_warmup_steps: 0
 actor_sampling:
   # 仅限制 Actor 有效监督帧；方向 5 且 ABCD 全松开才是 Neutral。
   enabled: false
   neutral_max_fraction: 0.05
 actor_weighting:
   # 全部有效帧照常监督，仅降低 Neutral 相对损失权重。
-  enabled: true
+  enabled: false
   neutral_weight: 0.05
 reward:
   # 小局 KO 终局额外奖励；loss 填正数，计算时扣除。

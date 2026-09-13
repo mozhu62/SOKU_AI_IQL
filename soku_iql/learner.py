@@ -98,7 +98,10 @@ class Learner:
         with torch.no_grad():
             new_value = self.forward(n.value, batch)[..., 0]
             advantage = q_ref - new_value[:, :action.shape[1]]
-            weights = advantage_weights(advantage, cfg["advantage_beta"], cfg["max_weight"])
+            # 恒1消融断开价值估计到Actor损失的权重路径，Q/V仍照常更新。
+            use_advantage = cfg.get('actor_advantage_weighting', True)
+            weights = (advantage_weights(advantage, cfg["advantage_beta"], cfg["max_weight"])
+                       if use_advantage else torch.ones_like(advantage))
             # 标准单步 IQL：即时奖励加下一状态 V，终局关闭 bootstrap。
             target = batch_td_target(batch, new_value, cfg["gamma"])
         actor_updated, actor_grad, actor_loss = False, None, None
@@ -136,6 +139,10 @@ class Learner:
         result.update(sampling_stats, actor_skip_reason=actor_skip_reason,
                       n_step=1, n_step_actual_mean=1.0,
                       actor_weighting_enabled=weighting_enabled, actor_neutral_weight=neutral_weight,
+                      actor_advantage_weighting=use_advantage,
+                      actor_objective=('advantage_weighted' if use_advantage else
+                                       'plain_bc' if not sampling.get('enabled', False) and neutral_weight == 1.0
+                                       else 'bc_with_category_adjustment'),
                       actor_optimized_samples=sampling_stats["actor_samples"] if actor_updated else 0)
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)

@@ -12,6 +12,7 @@ TRAINING = dict(device="auto", total_steps=100000, batch_size=16, sequence_lengt
                 max_grad_norm=10.0, log_interval=20, save_interval=1000,
                 validation_interval=1000, validation_batches=20, prefetch_batches=2)
 IQL = dict(gamma=0.99, n_step=1, expectile=0.7, advantage_beta=3.0, max_weight=100.0,
+           actor_advantage_weighting=True,
            target_tau=0.005, actor_lr=0.0001, critic_lr=0.0003, value_lr=0.0003,
            weight_decay=0.0, actor_warmup_steps=1000)
 REWARD = dict(damage_dealt=0.001, damage_taken=0.001, win=0.0, loss=0.0)
@@ -31,6 +32,7 @@ def validate_resume(config, previous):
             # 旧包未记录胜负奖励时按未启用解释，不静默改变已有训练目标。
             old = {**REWARD, **old}
         if key == "iql":
+            old = {'actor_advantage_weighting': True, **old}
             # N-step 可显式切换；其余算法参数继续执行原有续训约束。
             current = {k: v for k, v in current.items() if k != "n_step"}
             old = {k: v for k, v in old.items() if k != "n_step"}
@@ -61,6 +63,8 @@ def load(path, source):
     if cfg["data"]["train_fraction"] != .8 or cfg["data"]["vertical_positive_is_down"] != source["data"]["vertical_positive_is_down"]:
         raise ValueError("BC→IQL 不允许改变划分比例或方向编码")
     t, q = cfg["training"], cfg["iql"]
+    if type(q['actor_advantage_weighting']) is not bool:
+        raise ValueError('iql.actor_advantage_weighting 必须是布尔值')
     if type(q["n_step"]) is not int or q["n_step"] != 1:
         raise ValueError("当前 IQL 固定使用单步 TD，请设置 iql.n_step=1")
     sampling = cfg["actor_sampling"]
@@ -84,6 +88,8 @@ def load(path, source):
         raise ValueError("TCN 历史为 burn_in=31/63/255，预取不超过 8，amp 必须是布尔值")
     cfg["model"]["temporal_mode"] = {31: "tcn", 63: "tcn64", 255: "tcn256"}[t["burn_in"]]
     for key, value in q.items():
+        if key == 'actor_advantage_weighting':
+            continue
         if type(value) not in (int, float) or not math.isfinite(value):
             raise ValueError(f"iql.{key} 必须为有限数值")
     if not (0 < q["gamma"] <= 1 and .5 < q["expectile"] < 1 and 0 < q["target_tau"] <= 1
