@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from .models import IQLNetworks
 from .actor_sampling import build_actor_mask
 from .actor_weighting import weighted_actor_loss
+from .keyframes import build_changepoint_mask
 
 
 def tensor_batch(value, device):
@@ -112,11 +113,16 @@ class Learner:
             raise ValueError("Actor 筛选与类别加权不能同时启用")
         neutral_weight = weighting.get("neutral_weight", .25) if weighting_enabled else 1.0
         actor_mask, sampling_stats = build_actor_mask(action, mask, **sampling)
+        changed, eligible = build_changepoint_mask(action, mask, batch['previous_action'].long())
+        keyframe_cfg = self.config.get('keyframe_weighting', {})
+        change_weight = keyframe_cfg.get('changepoint_weight', 32.0) if keyframe_cfg.get('enabled', False) else 1.0
+        keyframe_weights = torch.where(changed, change_weight, 1.0)
         actor_skip_reason = "warmup" if step < cfg["actor_warmup_steps"] else "no_samples" if not sampling_stats["actor_samples"] else None
         if actor_skip_reason is None:
             logits = self.forward(n.actor, batch)[:, :action.shape[1]]
             ce = F.cross_entropy(logits[actor_mask], action[actor_mask], reduction="none")
-            actor_loss = weighted_actor_loss(ce, weights[actor_mask], action[actor_mask], neutral_weight)
+            actor_loss = weighted_actor_loss(ce, weights[actor_mask], action[actor_mask], neutral_weight,
+                                             keyframe_weights[actor_mask])
             actor_updated, actor_grad = self.optimize("actor", actor_loss)
             if not actor_updated:
                 actor_skip_reason = "amp"
@@ -137,10 +143,15 @@ class Learner:
         if diagnostics:
             result.update(self.validate_batch(raw))
         result.update(sampling_stats, actor_skip_reason=actor_skip_reason,
+                      keyframe_weighting_enabled=keyframe_cfg.get('enabled', False),
+                      changepoint_weight=change_weight,
+                      actor_changepoint_samples=int((changed & actor_mask).sum()),
+                      actor_history_eligible_samples=int((eligible & actor_mask).sum()),
                       n_step=1, n_step_actual_mean=1.0,
                       actor_weighting_enabled=weighting_enabled, actor_neutral_weight=neutral_weight,
                       actor_advantage_weighting=use_advantage,
                       actor_objective=('advantage_weighted' if use_advantage else
+                                       'keyframe_bc' if change_weight != 1.0 else
                                        'plain_bc' if not sampling.get('enabled', False) and neutral_weight == 1.0
                                        else 'bc_with_category_adjustment'),
                       actor_optimized_samples=sampling_stats["actor_samples"] if actor_updated else 0)
@@ -165,8 +176,7 @@ class Learner:
             raise FloatingPointError("验证输出含 NaN/Inf")
         prediction = logits.argmax(-1)
         previous = b["previous_action"][mask]
-        eligible = (previous >= 0) & (previous < logits.shape[-1])
-        change = eligible & (previous != labels)
+        change, eligible = build_changepoint_mask(labels, torch.ones_like(labels, dtype=torch.bool), previous.long())
         error = torch.minimum(q1, q2) - target
         return dict(samples=int(mask.sum()), nll=float(F.cross_entropy(logits, labels)),
                     top1=float((prediction == labels).float().mean()),

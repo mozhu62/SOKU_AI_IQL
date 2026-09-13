@@ -30,7 +30,11 @@ iql:
   critic_lr: 0.0003
   value_lr: 0.0003
   actor_warmup_steps: 0
+keyframe_weighting:
+  enabled: true
+  changepoint_weight: 32.0
 actor_sampling:
+  # 关键帧采用损失加权，不筛除保持帧。
   # 仅限制 Actor 有效监督帧；方向 5 且 ABCD 全松开才是 Neutral。
   enabled: false
   neutral_max_fraction: 0.05
