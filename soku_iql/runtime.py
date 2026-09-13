@@ -111,7 +111,8 @@ def run(config_path, init_bc=None, resume=None, control=None):
         learner = Learner(config, package["model"] if init_bc else None)
         step = samples = actor_updates = 0
         best = float("inf")
-        provenance = dict(bc_path=str(source_path), bc_sha256=source_hash)
+        provenance = dict(bc_path=str(source_path), bc_sha256=source_hash,
+                          source_network_version=package.get('source_network_version', package.get('network_version')))
         if resume:
             learner.networks.load_state_dict(package["networks"], strict=True)
             for key in learner.optimizers:

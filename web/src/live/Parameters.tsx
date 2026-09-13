@@ -9,6 +9,7 @@ const keyNames:Record<string,string>={up:'上',down:'下',left:'左',right:'右'
 export function Parameters({state}:{state:Row}){
   const config=state.runtime_config||{},signature=JSON.stringify(config)||'{}',[draft,setDraft]=useState<Row>({}),[message,setMessage]=useState('');
   useEffect(()=>{const cfg=JSON.parse(signature);setDraft({device:cfg.device,rounds:cfg.rounds,cpu_threads:cfg.cpu_threads,
+    amp:cfg.amp??false,streaming_tcn:cfg.streaming_tcn??true,tcn_cuda_graph:cfg.tcn_cuda_graph??true,
     keyboard:cfg.keyboard||{},difficulty:cfg.environment?.cpu_difficulty_label,
     decision_interval_frames:cfg.environment?.decision_interval_frames,auto_restart:cfg.restart?.enabled});},[signature]);
   const canApply=state.connected&&!state.workbench_busy&&!state.control?.active&&state.state!=='initializing';
@@ -16,7 +17,9 @@ export function Parameters({state}:{state:Row}){
   const game=state.game||{};
   return <><div className="section-intro"><div><h1>参数与记录</h1><p>沿用工作台配置流程：编辑值与运行值分开，暂停后应用并新建会话。</p></div></div>
     <Card title="实战参数" note="不更改训练损失、网络结构或模型权重；分类选择固定为 argmax，不采样"><div className="form-grid">
-      <label className="field">推理设备<input value={draft.device??''} onChange={e=>setDraft({...draft,device:e.target.value})} placeholder="cpu / cuda / cuda:0"/></label>
+      <label className="field">推理设备<input value={draft.device??''} onChange={e=>setDraft({...draft,device:e.target.value})} placeholder="cpu / cuda / cuda:0 / hybrid"/><small>hybrid：CPU 编码与输出，CUDA:0 执行 TCN。</small></label>
+      {(['amp','streaming_tcn','tcn_cuda_graph'] as const).map(key=><label className="field" key={key}>{({amp:'CUDA FP16 autocast',streaming_tcn:'增量 TCN',tcn_cuda_graph:'批量 CUDA Graph'})[key]}<input type="checkbox" checked={!!draft[key]} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/></label>)}
+      <p>实际路径：{state.prediction?.tcn_backend??'尚未推理'}；本次新增帧：{state.prediction?.tcn_computed_frames??'—'}；精度：{state.inference_dtype??'—'}</p>
       <label className="field">CPU 线程数<input type="number" min={1} max={64} value={draft.cpu_threads??2} onChange={e=>setDraft({...draft,cpu_threads:+e.target.value})}/></label>
       <label className="field">完整小局数（0 不限）<input type="number" min={0} max={10000} value={draft.rounds??20} onChange={e=>setDraft({...draft,rounds:+e.target.value})}/></label>
       <label className="field">决策间隔 / 游戏帧<input type="number" min={1} max={1} disabled value={draft.decision_interval_frames??1} onChange={e=>setDraft({...draft,decision_interval_frames:+e.target.value})}/><small>固定为 1；从 DLL 队列补收真实帧，满模型要求的窗口才推理。实际推理频率受性能限制。</small></label>
@@ -33,6 +36,7 @@ export function Parameters({state}:{state:Row}){
       {name:'inBattle / matchState',value:`${String(game.in_battle??'未记录')} / ${game.match_state??'未记录'}`},
       {name:'进程 ID / 游戏帧',value:`${game.pid??'未记录'} / ${game.frame??'未记录'}`},
       {name:'网络版本',value:state.network_version||'尚未加载'},
+      {name:'实际推理设备 / 精度',value:state.inference_dtype?`${state.device} · ${state.inference_dtype==='float32'?'FP32':state.inference_dtype} · AMP ${state.inference_amp?'开启':'关闭'}`:'尚未加载'},
       {name:'时序结构',value:state.temporal?.mode==='tcn'?`TCN${state.temporal.context_frames}：228D×${state.temporal.context_frames} → 256D`:'尚未加载'},
       {name:'技能类型输入',value:state.uses_resources===true?'每方四槽 variant + mask，同帧配对':state.uses_resources===false?'旧模型，不使用':'尚未加载'},
       {name:'评估报告目录',value:state.summary?.report_directory||'尚未创建'},

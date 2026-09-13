@@ -35,6 +35,9 @@ class IQLReplayStore(ReplayStore):
         reward[:-1] = (np.maximum(enemy[:-1] - enemy[1:], 0) * self.config["reward"]["damage_dealt"]
                        - np.maximum(own[:-1] - own[1:], 0) * self.config["reward"]["damage_taken"])
         reward[~valid] = 0
+        outcome = ko_outcomes(own, enemy, valid, terminal)
+        reward += np.where(outcome > 0, self.config['reward'].get('win', 0.0),
+                           np.where(outcome < 0, -self.config['reward'].get('loss', 0.0), 0)).astype(np.float32)
         if not np.isfinite(reward).all():
             raise ValueError(f"伤害奖励含非有限值：{name}")
         # 终局只关闭 bootstrap；片段末尾若存在真实后继且未终局，仍使用该后继的 V。
@@ -55,8 +58,6 @@ class IQLReplayStore(ReplayStore):
         names = self.split[split]
         weights = np.asarray([self.info[name]["transitions"] for name in names], np.float64)
         batch, length, burn = cfg["batch_size"], cfg["sequence_length"], cfg["burn_in"]
-        q = getattr(self, "config", {}).get("iql", {})
-        n_step, gamma = q.get("n_step", 1), q.get("gamma", .99)
         chosen = rng.choice(len(names), min(batch, cfg["replays_per_batch"]), p=weights / weights.sum())
         pieces = []
         for shard_id, rows in zip(chosen, np.array_split(np.arange(batch), len(chosen))):
@@ -68,22 +69,27 @@ class IQLReplayStore(ReplayStore):
             positions = starts + picks - prior
             burn_lengths = np.minimum(burn, positions - starts)
             prefix = positions[:, None] - burn_lengths[:, None] + np.arange(burn)
-            main = positions[:, None] + np.arange(length + n_step)
-            # 尾部补足 N 步真实后继；TCN 因果前向，未来帧不进入当前动作预测。
+            main = positions[:, None] + np.arange(length + 1)
+            # 只读取一个额外真实后继；尾部无效监督仍由 mask 排除。
             indices = np.concatenate((np.minimum(prefix, positions[:, None]), np.minimum(main, ends[:, None])), 1)
             labels = np.minimum(main[:, :length], ends[:, None] - 1)
             mask = main[:, :length] < ends[:, None]
-            returns, discounts, terminals, steps = n_step_returns(
-                shard["iql_reward"], shard["iql_terminal"], main[:, :length], ends[:, None], n_step, gamma)
             pieces.append(dict(observation=self.observation(shard, indices), burn_lengths=burn_lengths.astype(np.int64),
                                action=shard["joint_action_id"][labels], reward=shard["iql_reward"][labels],
                                terminal=shard["iql_terminal"][labels], mask=mask,
-                               n_step_reward=returns, n_step_discount=discounts, n_step_terminal=terminals,
-                               n_step_steps=steps, bootstrap_index=np.arange(length)[None, :] + steps,
                                previous_action=shard["previous_expert_action_id"][labels]))
         result = {k: np.concatenate([x[k] for x in pieces]) for k in pieces[0] if k != "observation"}
         result["observation"] = {k: np.concatenate([x["observation"][k] for x in pieces]) for k in pieces[0]["observation"]}
         return result
+
+
+def ko_outcomes(own, enemy, valid, terminal):
+    """只识别有效终局转移中的首次 KO；不将双倒、缺帧或截断推断为胜负。"""
+    outcome = np.zeros(len(own), np.int8)
+    eligible = (valid[:-1] & terminal[:-1] & (own[:-1] > 0) & (enemy[:-1] > 0))
+    outcome[:-1] = np.where(eligible & (enemy[1:] <= 0) & (own[1:] > 0), 1,
+                           np.where(eligible & (own[1:] <= 0) & (enemy[1:] > 0), -1, 0))
+    return outcome
 
 
 def n_step_returns(rewards, terminal, positions, ends, n_step, gamma):

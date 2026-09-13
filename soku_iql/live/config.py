@@ -14,6 +14,7 @@ from .windows_api import parse_virtual_key
 DEFAULTS = {
     "checkpoint": "outputs/iql_suika/actor_bc.pt",
     "device": "cpu", "cpu_threads": 2,
+    "amp": False, "streaming_tcn": True, "tcn_cuda_graph": True,
     "output": "outputs/evaluations", "rounds": 20,
     "environment": {
         "player_side": "left",
@@ -56,14 +57,17 @@ def load_config(path="configs/live_eval.yaml"):
 
 
 def validate(config):
+    for name, default in (('amp', False), ('streaming_tcn', True), ('tcn_cuda_graph', True)):
+        if type(config.get(name, default)) is not bool:
+            raise ValueError(f'{name} 必须是布尔值')
     def integer(value, low, high):
         return type(value) is int and low <= value <= high
 
     env, restart = config["environment"], config["restart"]
     if any(not isinstance(config[key], str) or not config[key].strip() for key in ("checkpoint", "output")):
         raise ValueError("模型路径和评估输出目录必须是非空字符串")
-    if not isinstance(config["device"], str) or not re.fullmatch(r"auto|cpu|cuda(?::[0-9]+)?", config["device"]):
-        raise ValueError("推理设备应为 cpu / cuda / cuda:0 / auto")
+    if not isinstance(config["device"], str) or not re.fullmatch(r"auto|cpu|hybrid|cuda(?::[0-9]+)?", config["device"]):
+        raise ValueError("推理设备应为 cpu / cuda / cuda:0 / auto / hybrid")
     if not integer(config["rounds"], 0, 10000) or not integer(config["cpu_threads"], 1, 64):
         raise ValueError("rounds 应为 0～10000（0 为不限局数），cpu_threads 应为 1～64")
     if env["player_side"] not in ("left", "right"):

@@ -31,11 +31,9 @@ def td_target(rewards, terminal, next_value, gamma):
 
 
 def batch_td_target(batch, values, gamma):
-    if "bootstrap_index" in batch:
-        following = values.gather(1, batch["bootstrap_index"].long())
-        return td_target(batch["n_step_reward"], batch["n_step_terminal"], following, batch["n_step_discount"])
-    # 保留旧单步测试/调用者兼容；正式 Dataset 始终提供完整 N-step 字段。
-    return td_target(batch["reward"], batch["terminal"], values[:, 1:], gamma)
+    # 当前每个监督位置仅使用真实紧邻后继，训练与验证共用同一公式。
+    length = batch['reward'].shape[1]
+    return td_target(batch["reward"], batch["terminal"], values[:, 1:length+1], gamma)
 
 
 class Learner:
@@ -101,7 +99,7 @@ class Learner:
             new_value = self.forward(n.value, batch)[..., 0]
             advantage = q_ref - new_value[:, :action.shape[1]]
             weights = advantage_weights(advantage, cfg["advantage_beta"], cfg["max_weight"])
-            # Q 回归真实轨迹 N 步回报及后继 V，不做 argmax 或跨终局 bootstrap。
+            # 标准单步 IQL：即时奖励加下一状态 V，终局关闭 bootstrap。
             target = batch_td_target(batch, new_value, cfg["gamma"])
         actor_updated, actor_grad, actor_loss = False, None, None
         sampling = self.config.get("actor_sampling", {})
@@ -136,8 +134,7 @@ class Learner:
         if diagnostics:
             result.update(self.validate_batch(raw))
         result.update(sampling_stats, actor_skip_reason=actor_skip_reason,
-                      n_step=cfg.get("n_step", 1),
-                      n_step_actual_mean=float(batch["n_step_steps"][mask].float().mean()) if "n_step_steps" in batch else 1.0,
+                      n_step=1, n_step_actual_mean=1.0,
                       actor_weighting_enabled=weighting_enabled, actor_neutral_weight=neutral_weight,
                       actor_optimized_samples=sampling_stats["actor_samples"] if actor_updated else 0)
         if self.device.type == "cuda":

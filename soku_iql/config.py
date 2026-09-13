@@ -14,7 +14,7 @@ TRAINING = dict(device="auto", total_steps=100000, batch_size=16, sequence_lengt
 IQL = dict(gamma=0.99, n_step=1, expectile=0.7, advantage_beta=3.0, max_weight=100.0,
            target_tau=0.005, actor_lr=0.0001, critic_lr=0.0003, value_lr=0.0003,
            weight_decay=0.0, actor_warmup_steps=1000)
-REWARD = dict(damage_dealt=0.001, damage_taken=0.001)
+REWARD = dict(damage_dealt=0.001, damage_taken=0.001, win=0.0, loss=0.0)
 ACTOR_SAMPLING = dict(enabled=False, neutral_max_fraction=0.25)
 ACTOR_WEIGHTING = dict(enabled=False, neutral_weight=0.25)
 
@@ -27,6 +27,9 @@ def resolve(path):
 def validate_resume(config, previous):
     for key in ("model", "seed", "iql", "reward"):
         current, old = config[key], previous[key]
+        if key == 'reward':
+            # 旧包未记录胜负奖励时按未启用解释，不静默改变已有训练目标。
+            old = {**REWARD, **old}
         if key == "iql":
             # N-step 可显式切换；其余算法参数继续执行原有续训约束。
             current = {k: v for k, v in current.items() if k != "n_step"}
@@ -58,8 +61,8 @@ def load(path, source):
     if cfg["data"]["train_fraction"] != .8 or cfg["data"]["vertical_positive_is_down"] != source["data"]["vertical_positive_is_down"]:
         raise ValueError("BC→IQL 不允许改变划分比例或方向编码")
     t, q = cfg["training"], cfg["iql"]
-    if type(q["n_step"]) is not int or not 1 <= q["n_step"] <= 128:
-        raise ValueError("iql.n_step 必须为 1～128 的整数")
+    if type(q["n_step"]) is not int or q["n_step"] != 1:
+        raise ValueError("当前 IQL 固定使用单步 TD，请设置 iql.n_step=1")
     sampling = cfg["actor_sampling"]
     weighting = cfg["actor_weighting"]
     weight = weighting["neutral_weight"]

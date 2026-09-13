@@ -147,7 +147,7 @@ class Workbench:
         model_id = value.get("model_id")
         if model_id:
             config["checkpoint"] = str(self.repository.path(model_id, "models"))
-        for key in ("device", "rounds", "cpu_threads"):
+        for key in ("device", "rounds", "cpu_threads", "amp", "streaming_tcn", "tcn_cuda_graph"):
             if key in value:
                 config[key] = value[key]
         if "difficulty" in value:

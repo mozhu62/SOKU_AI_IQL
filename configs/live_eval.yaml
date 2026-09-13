@@ -1,6 +1,9 @@
 # 这是独立的 Windows 实战验证配置，不改变训练配置和模型权重。
 checkpoint: outputs/iql_suika_tcn256/actor_bc.pt
-device: cuda
+device: hybrid
+amp: true
+streaming_tcn: true
+tcn_cuda_graph: true
 cpu_threads: 2
 output: outputs/evaluations
 rounds: 20

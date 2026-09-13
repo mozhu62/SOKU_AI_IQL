@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import copy
 import tempfile
 from pathlib import Path
 
@@ -12,12 +13,42 @@ from .action_space import ACTION_SCHEMA
 from .schema import policy_input_manifest
 
 
+def adapt_latest_bc(package):
+    """只适配已知同构 BC256；先核对完整清单，不能用改版本号掩盖结构差异。"""
+    source_version = 'soku_bc_tcn256_joint144_v1'
+    if package.get('network_version') != source_version:
+        return package
+    if package.get('algorithm') != 'bc':
+        raise ValueError('最新 BC 初始化只接受 algorithm=bc')
+    spec = package.get('spec', {})
+    model = spec.get('model', {})
+    if spec.get('network_version') != source_version or model.get('temporal_mode') != 'tcn256':
+        raise ValueError('BC256 顶层版本、结构版本或时序模式不一致')
+    canonical = network_spec(model)
+    expected_source = copy.deepcopy(canonical)
+    expected_source['network_version'] = source_version
+    if spec != expected_source:
+        raise ValueError('最新 BC 与 IQL 的完整输入/动作/时序/融合结构清单不一致，禁止迁移')
+    if package.get('config', {}).get('model') != canonical['model']:
+        raise ValueError('BC 配置中的模型结构与 spec 不一致')
+    from .models import BCNetwork
+    network = BCNetwork(model)
+    network.load_state_dict(package['model'], strict=True)
+    # 只更新内存中的命名空间；源文件、权重、划分与归一化保持原样。
+    adapted = dict(package)
+    adapted['source_network_version'] = source_version
+    adapted['network_version'] = canonical['network_version']
+    adapted['spec'] = canonical
+    return adapted
+
+
 def load(path: Path):
     if not path.is_file():
         raise FileNotFoundError(f"未找到 BC checkpoint：{path}；从零训练请去掉 --resume")
     package = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(package, dict) or package.get("algorithm") != "bc":
         raise ValueError("仅接受 BC checkpoint；CQL/PPO/IQL 权重不能作为 BC 续训模型，请从随机初始化开始")
+    package = adapt_latest_bc(package)
     version = package.get("network_version")
     if version not in (NETWORK_VERSION, "soku_iql_tcn64_joint144_v1", "soku_iql_tcn256_joint144_v1"):
         raise ValueError(

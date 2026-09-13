@@ -12,6 +12,7 @@ from ..bc_core.models import BCNetwork
 from ..bc_core.action_space import ACTION_COUNT, to_controller, decode, action_name
 from .observation import ObservationBuilder
 from .tcn_window import TCNObservationWindow
+from .batch_graph_candidate import BatchGraphCandidate
 
 
 class LiveAgent:
@@ -21,7 +22,13 @@ class LiveAgent:
         before = path.stat()
         torch.set_num_threads(config["cpu_threads"])
         requested = config["device"]
+        self.hybrid = requested == 'hybrid'
+        if self.hybrid and not torch.cuda.is_available():
+            raise ValueError('hybrid 需要可用 CUDA，请检查环境或显式选择 cpu')
+        requested = 'cpu' if self.hybrid else requested
         self.device = torch.device(("cuda" if torch.cuda.is_available() else "cpu") if requested == "auto" else requested)
+        self.tcn_device = torch.device('cuda:0') if self.hybrid else self.device
+        self.device_label = 'hybrid (CPU + TCN CUDA:0)' if self.hybrid else str(self.device)
         package = load(path)
         self.trained_algorithm = package.get("provenance", {}).get("trained_algorithm", "bc")
         self.model = BCNetwork(package["spec"]["model"], package["network_version"])
@@ -30,6 +37,11 @@ class LiveAgent:
         # BC 包的权重键是 model；不能把 CQL 的 online Q 网络或优化器当作策略加载。
         self.model.load_state_dict(package["model"], strict=True)
         self.model.to(self.device).eval().requires_grad_(False)
+        # 混合模式只将 TCN 放 GPU，编码和输出仍为 CPU FP32。
+        if self.hybrid:
+            self.model.tcn.to(self.tcn_device)
+        self.inference_amp = config.get('amp', False) and self.tcn_device.type == 'cuda'
+        self.inference_dtype = ('CPU FP32 / TCN ' if self.hybrid else '') + ('AMP FP16' if self.inference_amp else 'FP32')
         self.temporal_mode = self.model.temporal_mode
         if config["environment"]["decision_interval_frames"] != 1:
             raise ValueError("TCN 按连续游戏帧训练，实战 decision_interval_frames 必须为 1，不能用稀疏决策冒充连续帧")
@@ -46,7 +58,9 @@ class LiveAgent:
         if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
             raise ValueError("加载过程中模型文件发生变化，请先复制为固定文件再开始评估")
         self.memory = None
-        self.tcn_window = TCNObservationWindow(self.model.tcn.context_frames)
+        self.tcn_window = TCNObservationWindow(self.model.tcn.context_frames, config.get('streaming_tcn', True))
+        if config.get('tcn_cuda_graph', True) and self.tcn_window.streaming and self.tcn_device.type == 'cuda':
+            self.tcn_window.graph = BatchGraphCandidate(self.model.tcn, self.tcn_device, self.inference_amp)
 
     def reset(self):
         self.memory = None
@@ -64,7 +78,9 @@ class LiveAgent:
         key = (int(payload.gameProcessId), int(payload.currentRound), int(payload.battleFrame))
         if self.tcn_window.key != key:
             raise ValueError("推理帧不对应 TCN 窗口末帧，禁止使用错位历史")
-        logits, memory = self.tcn_window.logits(self.model, self.device), None
+        with torch.autocast(device_type=self.tcn_device.type, dtype=torch.float16, enabled=self.inference_amp):
+            logits = self.tcn_window.logits(self.model, self.device, tcn_device=self.tcn_device)
+        memory = None
         previous_id, previous_duration = self.tcn_window.previous_action, self.tcn_window.previous_duration
         if (logits.shape != (1, ACTION_COUNT) or not torch.isfinite(logits).all()
                 or (memory is not None and not torch.isfinite(memory).all())):
@@ -87,6 +103,9 @@ class LiveAgent:
                 "output_semantics": "categorical_logits", "action_selection": self.action_selection,
                 "temporal_mode": self.temporal_mode,
                 "context_frames_used": len(self.tcn_window),
+                "tcn_computed_frames": self.tcn_window.processed_frames,
+                "tcn_cache_rebuilt": self.tcn_window.rebuilt,
+                "tcn_backend": self.tcn_window.graph.last_path if self.tcn_window.graph is not None else 'eager',
                 "context_first_frame": self.tcn_window.rows[0][0][2],
                 "observation_frame": int(payload.battleFrame), "observation_round": int(payload.currentRound),
                 "sample_serial": int(payload.sampleSerial),

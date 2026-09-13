@@ -82,7 +82,8 @@ class LiveRuntime:
                   "temporal_resets": self.temporal_resets, "temporal_reset_reason": self.temporal_reset_reason,
                   "prediction": copy.deepcopy(self.last_prediction)}
         if self.agent is not None:
-            status.update(step=self.agent.step, device=str(self.agent.device),
+            status.update(step=self.agent.step, device=self.agent.device_label,
+                          inference_amp=self.agent.inference_amp, inference_dtype=self.agent.inference_dtype,
                           algorithm=self.agent.trained_algorithm, output_semantics="categorical_logits",
                           action_selection=self.agent.action_selection,
                           network_version=self.agent.model.spec["network_version"],
