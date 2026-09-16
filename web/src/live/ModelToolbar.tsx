@@ -26,6 +26,29 @@ export function ModelToolbar({state, connected}: {state: Row; connected: boolean
   const picking = state.workbench_operation === 'browse_model';
   const disabled = !connected || localBusy || state.workbench_busy || state.state === 'initializing';
   const loaded = state.loaded && state.state !== 'stopped' && state.state !== 'error';
+  const playerSide = state.runtime_config?.environment?.player_side;
+  const sideKnown = playerSide === 'left' || playerSide === 'right';
+  const sideLabel = playerSide === 'right' ? '2P' : '1P';
+  const targetSide = playerSide === 'right' ? 'left' : 'right';
+  const targetLabel = targetSide === 'right' ? '2P' : '1P';
+
+  const switchSide = async () => {
+    setLocalBusy(true); setError('');
+    setMessage(`正在暂停并切换到 ${targetLabel}，重建历史缓存…`);
+    try {
+      // 提交明确目标而非 toggle，重复提交同一目标不会再次反转观察侧。
+      const result = await command('load', {
+        player_side: targetSide, confirm_discard: true, pause_before_load: true,
+      });
+      if (result.status === 'failed') {
+        setError(result.message); setMessage('');
+      } else {
+        setMessage(result.status === 'queued' ? '切换仍在处理中，请等待当前观察侧更新。'
+          : `已切换到 ${targetLabel}，保持暂停；确认游戏键位属于该玩家后点击继续。键位映射未修改。`);
+      }
+    } catch (reason) {setError(String(reason)); setMessage('');}
+    finally {setLocalBusy(false);}
+  };
 
   // 原生窗口在服务端完成；刷新网页或请求等待超时也能从快照找回选中的文件。
   useEffect(() => {
@@ -80,6 +103,10 @@ export function ModelToolbar({state, connected}: {state: Row; connected: boolean
       </select>
     </div>
     <div className="model-buttons">
+      <span role="status">当前观察：{sideKnown ? sideLabel : '未记录'}</span>
+      <Button variant="secondary" disabled={disabled || !loaded || !sideKnown}
+        title="暂停松键，切换观察玩家并清空历史；未完小局保存为片段。不会修改游戏键位。"
+        onClick={() => void switchSide()}>切换到 {targetLabel}</Button>
       <Button variant="secondary" disabled={disabled} title="刷新已登记模型列表" aria-label="刷新模型列表"
         onClick={() => setRefresh(value => value + 1)}><RefreshCw size={15}/></Button>
       <Button disabled={disabled} onClick={() => void browse()}><FolderOpen size={16}/>选择本机模型</Button>

@@ -1,7 +1,7 @@
 data:
   # 必须对应初始化 BC 模型的原始固定划分；IQL 不创建新划分。
-  directory: ../replay_shards_resources_v4_mirror
-  split_file: ../replay_shards_resources_v4_mirror/train_val_split.json
+  directory: ../replay_cards_reimu_training_big_mirror
+  split_file: ../replay_cards_reimu_training_big_mirror/train_val_split.json
   cache_gb: 32.0
 training:
   device: cuda
@@ -44,8 +44,8 @@ actor_weighting:
   neutral_weight: 0.05
 reward:
   # 小局 KO 终局额外奖励；loss 填正数，计算时扣除。
-  win: 0.0
-  loss: 0.0
+  win: 10.0
+  loss: -10.0
   damage_dealt: 0.01
   damage_taken: 0.01
 output:

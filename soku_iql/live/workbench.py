@@ -150,6 +150,11 @@ class Workbench:
         for key in ("device", "rounds", "cpu_threads", "amp", "streaming_tcn", "tcn_cuda_graph"):
             if key in value:
                 config[key] = value[key]
+        if "player_side" in value:
+            # 切侧复用完整会话重建流程，不能保留旧玩家的按键历史和 TCN 缓存。
+            if value["player_side"] not in ("left", "right"):
+                raise ValueError("观察侧必须是 left（1P）或 right（2P）")
+            config["environment"]["player_side"] = value["player_side"]
         if "difficulty" in value:
             config["environment"]["cpu_difficulty_label"] = str(value["difficulty"])[:200]
         if "keyboard" in value:
