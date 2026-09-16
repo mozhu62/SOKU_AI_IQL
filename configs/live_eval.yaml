@@ -23,14 +23,14 @@ environment:
   watchdog_seconds: 1.0
   poll_seconds: 0.002
 keyboard:
-  up: Z
-  down: X
-  left: C
-  right: V
-  melee: B
-  dash: F
-  light_projectile: N
-  heavy_projectile: M
+  up: W
+  down: S
+  left: A
+  right: D
+  melee: J
+  dash: K
+  light_projectile: I
+  heavy_projectile: L
   # 本实验只控制方向与 ABCD，不发送切卡或用卡。
 restart:
   enabled: true

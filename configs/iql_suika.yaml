@@ -46,7 +46,7 @@ reward:
   # 小局 KO 终局额外奖励；loss 填正数，计算时扣除。
   win: 10.0
   loss: 10.0
-  damage_dealt: 0.01
-  damage_taken: 0.01
+  damage_dealt: 0.001
+  damage_taken: 0.001
 output:
   directory: outputs/iql_suika_tcn256
