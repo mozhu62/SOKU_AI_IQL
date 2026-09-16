@@ -64,8 +64,8 @@ def load(path, source):
     for key in ("directory", "split_file"):
         cfg["data"][key] = str(resolve(cfg["data"][key]))
     cfg["output"]["directory"] = str(resolve(cfg["output"]["directory"]))
-    if cfg["data"]["train_fraction"] != .8 or cfg["data"]["vertical_positive_is_down"] != source["data"]["vertical_positive_is_down"]:
-        raise ValueError("BC→IQL 不允许改变划分比例或方向编码")
+    if cfg["data"]["vertical_positive_is_down"] != source["data"]["vertical_positive_is_down"]:
+        raise ValueError("BC→IQL 不允许改变方向编码")
     t, q = cfg["training"], cfg["iql"]
     kf = cfg['keyframe_weighting']
     if (type(kf['enabled']) is not bool or type(kf['changepoint_weight']) not in (int, float)

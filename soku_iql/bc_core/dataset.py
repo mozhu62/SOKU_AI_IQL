@@ -46,8 +46,6 @@ def split_replays(config, progress, cancelled=lambda: False):
         result = json.loads(path.read_text(encoding="utf-8"))
         if result.get("files") != entries or result.get("seed") != config["seed"]:
             raise ValueError("数据或 seed 与固定划分不一致；请为新数据指定新的 split_file 和输出目录")
-        if result.get("train_fraction") != 0.8:
-            raise ValueError("已保存的数据划分不是 8:2")
     else:
         # 完全相同的 NPZ 按内容哈希归为一组，防止复制文件混入另一集合。
         groups = {}
