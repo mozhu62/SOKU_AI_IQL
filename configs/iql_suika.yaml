@@ -1,5 +1,5 @@
 data:
-  # 必须对应初始化 BC 模型的原始固定划分；IQL 不创建新划分。
+  # 可使用独立于 BC 的 IQL 数据与验证集；split_file 必须覆盖当前目录全部 NPZ。
   directory: ../replay_cards_reimu_training_big_mirror
   split_file: ../replay_cards_reimu_training_big_mirror/train_val_split.json
   cache_gb: 32.0

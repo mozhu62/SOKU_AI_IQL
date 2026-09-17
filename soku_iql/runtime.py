@@ -28,6 +28,16 @@ from .health_probe import FixedProbe
 LOGGER = logging.getLogger(__name__)
 
 
+def normalization_for_split(normalization, split_hash):
+    """复用来源模型的归一化数值，并把元数据绑定到当前 IQL 数据划分。"""
+    result = copy.deepcopy(normalization)
+    source_split_hash = result.get("normalization_source_split_hash") or result.get("split_hash")
+    if source_split_hash:
+        result["normalization_source_split_hash"] = source_split_hash
+    result["split_hash"] = split_hash
+    return result
+
+
 def aggregate(rows):
     samples = sum(row["samples"] for row in rows)
     result = {key: sum(row[key] * row["samples"] for row in rows) / samples
@@ -104,9 +114,23 @@ def run(config_path, init_bc=None, resume=None, control=None):
                 control.progress(message)
         cancelled = control.stop_event.is_set if control else lambda: False
         split = fixed_split(config, progress, cancelled)
-        if split["sha256"] != package["split_hash"]:
-            raise ValueError("必须使用 BC 原固定训练/验证划分，不能混入新的验证数据")
-        store = IQLReplayStore(config, split, progress, cancelled=cancelled, normalization=package["normalization"])
+        source_split_hash = package["split_hash"]
+        split_changed = split["sha256"] != source_split_hash
+        if split_changed:
+            LOGGER.warning(
+                "数据划分已变更：%s -> %s；继续复用来源模型的归一化数值，"
+                "验证指标不再与旧划分直接比较",
+                source_split_hash,
+                split["sha256"],
+            )
+        normalization = normalization_for_split(package["normalization"], split["sha256"])
+        store = IQLReplayStore(
+            config,
+            split,
+            progress,
+            cancelled=cancelled,
+            normalization=normalization,
+        )
         torch.manual_seed(config["seed"])
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(config["seed"])
@@ -127,6 +151,9 @@ def run(config_path, init_bc=None, resume=None, control=None):
                 torch.cuda.set_rng_state_all([state.cpu() for state in package["rng_cuda"]])
             step, samples, actor_updates, best = (package[key] for key in ("step", "samples", "actor_updates", "best_nll"))
             provenance = package["provenance"]
+            if split_changed:
+                # 旧 best_nll 属于另一验证集，不能阻止当前划分产出新的最佳模型。
+                best = float("inf")
         else:
             if config["model"]["temporal_mode"] != package["config"]["model"]["temporal_mode"]:
                 LOGGER.warning("Actor 时序扩展 %s→%s：复用全部旧层，新增卷积块随机初始化；输出不保证与原策略相同",
@@ -134,6 +161,10 @@ def run(config_path, init_bc=None, resume=None, control=None):
             actor_state = learner.networks.actor.state_dict()
             if not all(torch.equal(actor_state[key].cpu(), tensor) for key, tensor in package["model"].items()):
                 raise RuntimeError("BC→IQL Actor 权重未完整对齐")
+        if split_changed:
+            changes = list(provenance.get("data_split_changes", []))
+            changes.append({"from": source_split_hash, "to": split["sha256"]})
+            provenance = {**provenance, "data_split_changes": changes}
         # 网络和优化器已接管状态，释放原包，避免整个训练周期额外保留一套 CPU 权重。
         del package
         if control:

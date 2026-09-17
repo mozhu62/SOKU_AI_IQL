@@ -17,14 +17,14 @@ npm --prefix web run build
 python scripts/train.py --config configs/iql_suika.yaml --init-bc ../soku_bc/outputs/bc_suika_tcn32_joint144/last.pt
 ```
 
-模型路径是示例，换成实际训练好的当前 Joint144 BC 文件。旧 Joint432/GRU checkpoint 明确拒绝。`configs/iql_suika.yaml` 中的数据目录与 split_file 必须指向该 BC 原来的数据集和固定划分；服务器上按实际位置调整。所有配置路径相对 IQL 项目根目录，命令行模型路径按当前工作目录解析。目录实际为 `C:\FXTZ_AI\soku_iql`。
+模型路径是示例，换成实际训练好的当前 Joint144 BC 文件。旧 Joint432/GRU checkpoint 明确拒绝。`configs/iql_suika.yaml` 中的数据目录与 split_file 可以指向独立的 IQL 数据集和验证集，不再要求与 BC 的原划分哈希一致；split_file 仍须完整覆盖当前数据目录，保证本次训练内部可复现。服务器上按实际位置调整。所有配置路径相对 IQL 项目根目录，命令行模型路径按当前工作目录解析。目录实际为 `C:\FXTZ_AI\soku_iql`。
 
-初始化严格复制全部 Actor 权重；沿用 BC normalization、方向规则、action_shift 和 split_hash，不重新拟合归一化、不重新随机划分。Q1、Q2、V 的编码器从 BC 复制但参数独立，评分头新初始化，target Q 从 Q 复制。首次训练先记录 BC 基线，默认前 1000 步只学习 Q/V，此时 Actor 不更新，之后采用 IQL 优势加权 CE 更新策略。
+初始化严格复制全部 Actor 权重；沿用 BC normalization 的数值、方向规则和 action_shift，不重新拟合归一化。当前 IQL 划分使用自己的 split_hash，并在 checkpoint 中记录；若与来源模型不同，会记录警告和 provenance。Q1、Q2、V 的编码器从 BC 复制但参数独立，评分头新初始化，target Q 从 Q 复制。首次训练先记录 BC 基线，默认前 1000 步只学习 Q/V，此时 Actor 不更新，之后采用 IQL 优势加权 CE 更新策略。
 
 模型完成严格加载后会立即写出 step 0 的 `last.pt`、`actor_bc.pt` 和
 `bc_initial_actor.pt`，随后才执行基线验证；因此基线验证失败或耗时较长时也有
-可恢复的初始 checkpoint。固定划分可以是按玩家划分等任意比例，最终以 BC
-checkpoint 保存的 `split_hash` 为准，不再强制 8:2。
+可恢复的初始 checkpoint。固定划分可以是按玩家划分等任意比例，以当前 IQL
+配置生成或指定的 `split_hash` 为准，不再要求等于 BC，也不强制 8:2。
 
 加载时核对文件签名并立即计算来源 SHA256；若训练中的 BC `last.pt` 同时被覆盖，会明确拒绝。迁移建议先把所选 BC 文件复制为固定版本，避免数据预读期间来源变化。
 
@@ -38,7 +38,7 @@ python scripts/train.py --config configs/iql_suika.yaml --resume outputs/iql_sui
 
 Windows 实战入口：`python scripts/play.py --config configs/live_eval.yaml`。网页顶部选择模型后加载，支持 IQL 完整包、Actor 导出包和当前 BC 基线。实战保持独立服务，沿用当前游戏采集 DLL，不在 Linux 训练服务器发送游戏按键。
 
-续训锁定 batch_size、sequence_length、burn_in、replays_per_batch、validation_batches，以及 seed/模型/IQL/奖励定义，保证固定验证样本与已有 best 的比较口径不变。设备、缓存、总步数及记录间隔可以调整；跨设备数值不承诺逐 bit 重现。
+续训锁定 batch_size、sequence_length、burn_in、replays_per_batch、validation_batches，以及 seed/模型/IQL/奖励定义。数据划分允许变更；变更后旧 `best_nll` 自动失效，下一次验证按新验证集重新建立最佳模型基线。设备、缓存、总步数及记录间隔可以调整；跨设备数值不承诺逐 bit 重现。
 
 | 文件 | 用途 |
 |---|---|

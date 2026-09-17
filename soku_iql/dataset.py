@@ -9,7 +9,7 @@ from .bc_core.schema import STATE_CONTINUOUS_FEATURES
 def fixed_split(config, progress, cancelled=lambda: False):
     from pathlib import Path
     if not Path(config["data"]["split_file"]).is_file():
-        raise FileNotFoundError("必须提供 BC 已使用的固定 split_file，IQL 不重新划分数据")
+        raise FileNotFoundError("必须提供当前 IQL 数据集的固定 split_file，训练启动时不随机重划分")
     return split_replays(config, progress, cancelled)
 
 
