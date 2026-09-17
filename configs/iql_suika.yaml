@@ -23,16 +23,16 @@ iql:
   n_step: 1
   gamma: 0.995
   expectile: 0.7
-  advantage_beta: 0.3
+  advantage_beta: 1.0
   max_weight: 100.0
   target_tau: 0.005
   actor_lr: 0.0001
   critic_lr: 0.0003
   value_lr: 0.0003
-  actor_warmup_steps: 0
+  actor_warmup_steps: 1000
 keyframe_weighting:
   enabled: true
-  changepoint_weight: 32.0
+  changepoint_weight: 24.0
 actor_sampling:
   # 关键帧采用损失加权，不筛除保持帧。
   # 仅限制 Actor 有效监督帧；方向 5 且 ABCD 全松开才是 Neutral。
