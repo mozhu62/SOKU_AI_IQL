@@ -207,7 +207,7 @@ class Workbench:
             updated[section][field] = candidate
         if updated["training"]["total_steps"] <= step:
             raise ValueError("总步数必须大于当前步数")
-        atomic_json(self.output / "runtime_config.json", {k: updated[k] for k in ("data", "training", "iql", "reward", "output", "actor_sampling", "actor_weighting") if k in updated})
+        atomic_json(self.output / "runtime_config.json", {k: updated[k] for k in ("data", "training", "iql", "reward", "output", "actor_sampling", "actor_weighting", "keyframe_weighting", "diagnostics") if k in updated})
         config.clear()
         config.update(updated)
         import torch

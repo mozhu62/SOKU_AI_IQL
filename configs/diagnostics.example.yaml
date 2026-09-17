@@ -1,0 +1,30 @@
+# 将此段加入实际使用的 IQL YAML；原训练参数保持原值。
+diagnostics:
+  enabled: true
+  train_interval: 100
+  probe_interval: 1000
+  adv_near_zero_threshold: 0.05
+  probe_seed: 271828
+  probe_batches: 4
+  probe_batch_size: 4
+  probe_sequence_length: 32
+  probe_replays_per_batch: 4
+  probe_max_samples: 128
+  near_distance: 100.0
+  far_distance: 300.0
+  # 覆盖映射填写真实 Joint144 ID，不允许同一 ID 出现在两个类别。
+  action_classes: {}
+  warnings:
+    weight_clip_ratio: 0.05
+    q_gap_mean: 10.0
+    q_gap_p95: 20.0
+    q_std: 50.0
+    adv_std_min: 0.01
+    near_zero_ratio: 0.90
+    class_weight_share: 0.50
+    class_share_amplification: 2.0
+    class_min_samples: 20
+    attack_ratio_excess: 0.15
+    switch_ratio_excess: 0.15
+    attack_adv_gap: 0.10
+    beta_adv_std: 2.0

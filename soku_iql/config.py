@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 
 import yaml
+from .health_config import settings as diagnostic_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 TRAINING = dict(device="auto", total_steps=100000, batch_size=16, sequence_length=32,
@@ -49,18 +50,19 @@ def validate_resume(config, previous):
 
 def load(path, source):
     supplied = yaml.safe_load(resolve(path).read_text(encoding="utf-8-sig")) or {}
-    allowed = {"data", "training", "iql", "reward", "output", "actor_sampling", "actor_weighting", "keyframe_weighting"}
+    allowed = {"data", "training", "iql", "reward", "output", "actor_sampling", "actor_weighting", "keyframe_weighting", "diagnostics"}
     if not isinstance(supplied, dict) or set(supplied) - allowed:
         raise ValueError("IQL 配置只接受 data/training/iql/reward/output/actor_sampling/actor_weighting；模型与 seed 继承 BC")
     cfg = dict(seed=source["seed"], model=copy.deepcopy(source["model"]),
                data=copy.deepcopy(source["data"]), training=copy.deepcopy(TRAINING),
                iql=copy.deepcopy(IQL), reward=copy.deepcopy(REWARD), actor_sampling=copy.deepcopy(ACTOR_SAMPLING),
                actor_weighting=copy.deepcopy(ACTOR_WEIGHTING), keyframe_weighting=copy.deepcopy(KEYFRAME_WEIGHTING),
-               output=dict(directory="outputs/iql_suika"))
+               diagnostics=diagnostic_settings(), output=dict(directory="outputs/iql_suika"))
     for section, values in supplied.items():
         if not isinstance(values, dict) or set(values) - set(cfg[section]):
             raise ValueError(f"未知 {section} 参数")
         cfg[section].update(values)
+    cfg["diagnostics"] = diagnostic_settings(supplied.get("diagnostics"))
     for key in ("directory", "split_file"):
         cfg["data"][key] = str(resolve(cfg["data"][key]))
     cfg["output"]["directory"] = str(resolve(cfg["output"]["directory"]))

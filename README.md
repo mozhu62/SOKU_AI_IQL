@@ -21,6 +21,11 @@ python scripts/train.py --config configs/iql_suika.yaml --init-bc ../soku_bc/out
 
 初始化严格复制全部 Actor 权重；沿用 BC normalization、方向规则、action_shift 和 split_hash，不重新拟合归一化、不重新随机划分。Q1、Q2、V 的编码器从 BC 复制但参数独立，评分头新初始化，target Q 从 Q 复制。首次训练先记录 BC 基线，默认前 1000 步只学习 Q/V，此时 Actor 不更新，之后采用 IQL 优势加权 CE 更新策略。
 
+模型完成严格加载后会立即写出 step 0 的 `last.pt`、`actor_bc.pt` 和
+`bc_initial_actor.pt`，随后才执行基线验证；因此基线验证失败或耗时较长时也有
+可恢复的初始 checkpoint。固定划分可以是按玩家划分等任意比例，最终以 BC
+checkpoint 保存的 `split_hash` 为准，不再强制 8:2。
+
 加载时核对文件签名并立即计算来源 SHA256；若训练中的 BC `last.pt` 同时被覆盖，会明确拒绝。迁移建议先把所选 BC 文件复制为固定版本，避免数据预读期间来源变化。
 
 ## 续训和实战

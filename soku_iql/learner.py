@@ -10,11 +10,12 @@ from .models import IQLNetworks
 from .actor_sampling import build_actor_mask
 from .actor_weighting import weighted_actor_loss
 from .keyframes import build_changepoint_mask
+from .health import capture
 
 
 def tensor_batch(value, device):
     if isinstance(value, dict):
-        return {key: tensor_batch(item, device) for key, item in value.items()}
+        return {key: tensor_batch(item, device) for key, item in value.items() if not key.startswith("_diagnostic")}
     return torch.as_tensor(value).to(device, non_blocking=True)
 
 
@@ -76,14 +77,14 @@ class Learner:
         return scaler.get_scale() >= old_scale, float(norm)
 
     @torch.no_grad()
-    def q_reference(self, batch):
+    def q_reference(self, batch, return_pair=False):
         n = self.networks
         action = batch["action"][..., None]
         first = self.forward(n.target_q1, batch)[:, :action.shape[1]].gather(-1, action).squeeze(-1)
         second = self.forward(n.target_q2, batch)[:, :action.shape[1]].gather(-1, action).squeeze(-1)
-        return torch.minimum(first, second)
+        return (first, second) if return_pair else torch.minimum(first, second)
 
-    def train_batch(self, raw, step, diagnostics=False):
+    def train_batch(self, raw, step, diagnostics=False, health_diagnostics=False):
         started = time.perf_counter()
         batch = tensor_batch(raw, self.device)
         mask, action = batch["mask"].bool(), batch["action"].long()
@@ -92,7 +93,11 @@ class Learner:
         n, cfg = self.networks, self.config["iql"]
         for model in (n.actor, n.q1, n.q2, n.value):
             model.train()
-        q_ref = self.q_reference(batch)
+        if health_diagnostics:
+            target_q1, target_q2 = self.q_reference(batch, return_pair=True)
+            q_ref = torch.minimum(target_q1, target_q2)
+        else:
+            q_ref = self.q_reference(batch)
         value = self.forward(n.value, batch)[:, :action.shape[1], 0]
         v_loss = expectile_loss(q_ref - value, cfg["expectile"])[mask].mean()
         v_updated, v_grad = self.optimize("value", v_loss)
@@ -118,6 +123,7 @@ class Learner:
         change_weight = keyframe_cfg.get('changepoint_weight', 32.0) if keyframe_cfg.get('enabled', False) else 1.0
         keyframe_weights = torch.where(changed, change_weight, 1.0)
         actor_skip_reason = "warmup" if step < cfg["actor_warmup_steps"] else "no_samples" if not sampling_stats["actor_samples"] else None
+        logits = None
         if actor_skip_reason is None:
             logits = self.forward(n.actor, batch)[:, :action.shape[1]]
             ce = F.cross_entropy(logits[actor_mask], action[actor_mask], reduction="none")
@@ -155,21 +161,28 @@ class Learner:
                                        'plain_bc' if not sampling.get('enabled', False) and neutral_weight == 1.0
                                        else 'bc_with_category_adjustment'),
                       actor_optimized_samples=sampling_stats["actor_samples"] if actor_updated else 0)
+        if health_diagnostics:
+            result["_health"] = capture(
+                batch, q1, q2, target_q1, target_q2, new_value[:, :action.shape[1]], target,
+                advantage, weights, keyframe_weights, changed, eligible, actor_mask, logits,
+                neutral_weight, actor_updated)
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
         result["optimization_seconds"] = time.perf_counter() - started
         return result
 
     @torch.no_grad()
-    def validate_batch(self, raw):
+    def validate_batch(self, raw, health_diagnostics=False):
         b = tensor_batch(raw, self.device)
         for model in (self.networks.actor, self.networks.q1, self.networks.q2, self.networks.value):
             model.eval()
         mask, action = b["mask"].bool(), b["action"].long()
-        logits = self.forward(self.networks.actor, b)[:, :action.shape[1]][mask]
+        all_logits = self.forward(self.networks.actor, b)[:, :action.shape[1]]
+        logits = all_logits[mask]
         labels = action[mask]
-        q1 = self.forward(self.networks.q1, b)[:, :action.shape[1]].gather(-1, action[..., None]).squeeze(-1)[mask]
-        q2 = self.forward(self.networks.q2, b)[:, :action.shape[1]].gather(-1, action[..., None]).squeeze(-1)[mask]
+        all_q1 = self.forward(self.networks.q1, b)[:, :action.shape[1]].gather(-1, action[..., None]).squeeze(-1)
+        all_q2 = self.forward(self.networks.q2, b)[:, :action.shape[1]].gather(-1, action[..., None]).squeeze(-1)
+        q1, q2 = all_q1[mask], all_q2[mask]
         v = self.forward(self.networks.value, b)[..., 0]
         target = batch_td_target(b, v, self.config["iql"]["gamma"])[mask]
         if not all(torch.isfinite(x).all() for x in (logits, q1, q2, v, target)):
@@ -178,7 +191,7 @@ class Learner:
         previous = b["previous_action"][mask]
         change, eligible = build_changepoint_mask(labels, torch.ones_like(labels, dtype=torch.bool), previous.long())
         error = torch.minimum(q1, q2) - target
-        return dict(samples=int(mask.sum()), nll=float(F.cross_entropy(logits, labels)),
+        result = dict(samples=int(mask.sum()), nll=float(F.cross_entropy(logits, labels)),
                     top1=float((prediction == labels).float().mean()),
                     top5=float((logits.topk(5, -1).indices == labels[:, None]).any(-1).float().mean()),
                     change_count=int(change.sum()), change_correct=int(((prediction == labels) & change).sum()),
@@ -187,3 +200,17 @@ class Learner:
                     q_mean=float(torch.minimum(q1, q2).mean()), v_mean=float(v[:, :action.shape[1]][mask].mean()),
                     target_sum=float(target.sum()), target_square_sum=float(target.double().square().sum()),
                     residual_sum=float(error.sum()), residual_square_sum=float(error.double().square().sum()))
+        if health_diagnostics:
+            cfg = self.config["iql"]
+            t1, t2 = self.q_reference(b, return_pair=True)
+            adv = torch.minimum(t1, t2) - v[:, :action.shape[1]]
+            weight = advantage_weights(adv, cfg["advantage_beta"], cfg["max_weight"]) if cfg.get("actor_advantage_weighting", True) else torch.ones_like(adv)
+            changed, valid_history = build_changepoint_mask(action, mask, b["previous_action"].long())
+            kcfg = self.config.get("keyframe_weighting", {})
+            kw = torch.where(changed, kcfg.get("changepoint_weight", 32.0) if kcfg.get("enabled", False) else 1.0, 1.0)
+            neutral = self.config.get("actor_weighting", {})
+            # 验证使用全部有效帧，不随机筛选；报告明确标记为候选权重。
+            result["_health"] = capture(b, all_q1, all_q2, t1, t2, v[:, :action.shape[1]],
+                batch_td_target(b, v, cfg["gamma"]), adv, weight, kw, changed, valid_history,
+                mask, all_logits, neutral.get("neutral_weight", .25) if neutral.get("enabled", False) else 1.0)
+        return result

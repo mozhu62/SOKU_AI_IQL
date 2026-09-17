@@ -22,6 +22,8 @@ from .config import load, validate_resume, ACTOR_SAMPLING, ACTOR_WEIGHTING
 from .amp_state import restore_grad_scaler
 from .dataset import IQLReplayStore, fixed_split
 from .learner import Learner
+from . import health
+from .health_probe import FixedProbe
 
 LOGGER = logging.getLogger(__name__)
 
@@ -152,15 +154,57 @@ def run(config_path, init_bc=None, resume=None, control=None):
         # Web 模式训练在后台线程，信号只由服务主线程处理。
         old_signal = signal.signal(signal.SIGINT, request_stop) if threading.current_thread() is threading.main_thread() else None
         prefetch = None
+        diagnostic_config = config["diagnostics"]
+        probe = None
+        def emit_health(row, kind):
+            row.update(step=step, source_sha256=source_hash)
+            health.append(output / f"health_{kind}.jsonl", row)
+            if kind == "validation":
+                text = health.report(row)
+                LOGGER.info("\n%s", text)
+                with (output / "iql_health_report.txt").open("a", encoding="utf-8") as stream:
+                    stream.write(text + "\n")
+                if control:
+                    control.publish(health=row)
+            for warning in row["warnings"]:
+                LOGGER.warning("IQL诊断 step=%d %s：%s", step, kind, warning)
+
+        def run_probe():
+            nonlocal probe
+            if not diagnostic_config["enabled"]:
+                return
+            # 独立的验证路径结束后恢复每个模块的模式；不触碰优化器和训练 RNG。
+            modes = [(module, module.training) for module in learner.networks.modules()]
+            try:
+                if probe is None:
+                    probe = FixedProbe(store, config, output)
+                row = probe.evaluate(learner, step)
+                if row is not None:
+                    LOGGER.info("固定 probe step=%d：attack=%s，expert=%s，switch=%s，probe_id=%s",
+                                step, row["predicted_attack_ratio"], row["expert_attack_ratio"],
+                                row["predicted_switch_rate"], probe.id)
+                    for warning in row["warnings"]:
+                        LOGGER.warning("IQL probe：%s", warning)
+            except Exception:
+                LOGGER.exception("固定 probe 诊断失败；本次没有可用 probe 结论")
+            finally:
+                for module, mode in modes:
+                    module.training = mode
         def save(snapshot=False):
             started = time.perf_counter()
-            checkpoint.save(output / "last.pt", learner, bc_config, store.normalization, split["sha256"],
+            last_path = output / "last.pt"
+            actor_path = output / "actor_bc.pt"
+            checkpoint.save(last_path, learner, bc_config, store.normalization, split["sha256"],
                             step, samples, actor_updates, best, provenance)
-            checkpoint.export_actor(output / "actor_bc.pt", learner, bc_config, store.normalization, split["sha256"],
+            checkpoint.export_actor(actor_path, learner, bc_config, store.normalization, split["sha256"],
                                     step, samples, actor_updates, provenance)
             if snapshot:
-                checkpoint.save(output / "snapshots" / f"step_{step:09d}_{uuid4().hex[:8]}.pt", learner, bc_config,
+                snapshot_path = output / "snapshots" / f"step_{step:09d}_{uuid4().hex[:8]}.pt"
+                checkpoint.save(snapshot_path, learner, bc_config,
                                 store.normalization, split["sha256"], step, samples, actor_updates, best, provenance)
+                LOGGER.info("固定版本已保存：%s", snapshot_path.resolve())
+            LOGGER.info("checkpoint 已保存：step=%d，完整包=%s，实战 Actor=%s",
+                        step, last_path.resolve(), actor_path.resolve())
             if control:
                 control.timing("save", time.perf_counter()-started)
                 control.publish(last_saved=dict(step=step, time=time.time()))
@@ -178,12 +222,26 @@ def run(config_path, init_bc=None, resume=None, control=None):
             started = time.perf_counter()
             if control:
                 control.publish(state="validating", message="固定种子离线验证，不更新参数")
-            rows = []
+            rows, health_packets = [], []
             for index in range(config["training"]["validation_batches"]):
                 rng = np.random.default_rng(np.random.SeedSequence([config["seed"], index, 1]))
-                rows.append(learner.validate_batch(store.sample(rng, config["training"], "validation")))
+                row = learner.validate_batch(store.sample(rng, config["training"], "validation"),
+                                             health_diagnostics=diagnostic_config["enabled"])
+                if "_health" in row:
+                    health_packets.append(row.pop("_health"))
+                rows.append(row)
             result = aggregate(rows)
             record("validation", result)
+            if health_packets:
+                try:
+                    summary = health.summarize(health.merge(health_packets), config, "validation_candidate_weights")
+                    summary["actor_sampling_applied"] = False
+                    summary["validation_recipe"] = {key: config["training"][key] for key in
+                        ("batch_size", "sequence_length", "burn_in", "replays_per_batch", "validation_batches")}
+                    emit_health(summary, "validation")
+                except Exception:
+                    LOGGER.exception("验证统计日志写入失败；本次健康报告不完整")
+            run_probe()
             LOGGER.info("验证 samples=%d NLL=%.4f Top1=%.3f TD_MSE=%.4f EV=%s change_Top1=%s",
                         result["samples"], result["nll"], result["top1"], result["td_mse"], result["ev"], result["change_top1"])
             if control:
@@ -201,13 +259,18 @@ def run(config_path, init_bc=None, resume=None, control=None):
             return metrics
         try:
             if init_bc:
-                # 留存迁移前基线和可直接回放的策略；尚未进行任何策略更新。
-                baseline = validate()
-                best = baseline["nll"]
-                atomic_json(output / "bc_baseline.json", baseline)
+                # 模型完成严格加载后立刻留下 step 0 恢复点。基线验证可能很慢或
+                # 因数据问题失败，不能让已经成功构建的模型因此完全没有 checkpoint。
                 checkpoint.export_actor(output / "bc_initial_actor.pt", learner, bc_config, store.normalization,
                                         split["sha256"], step, samples, actor_updates, provenance)
                 save()
+                baseline = validate()
+                best = baseline["nll"]
+                atomic_json(output / "bc_baseline.json", baseline)
+                # 把基线指标写回恢复点；此时 Actor 仍与 BC 完全一致。
+                save()
+            elif diagnostic_config["enabled"]:
+                run_probe()
             if control:
                 control.publish(ready=True, best_nll=best, state="paused" if not control.running else "training")
             while step < config["training"]["total_steps"] and not stop:
@@ -225,10 +288,21 @@ def run(config_path, init_bc=None, resume=None, control=None):
                 started = time.perf_counter()
                 batch = prefetch.get()
                 wait = time.perf_counter() - started
-                result = learner.train_batch(batch, step)
+                collect_health = diagnostic_config["enabled"] and (step + 1) % diagnostic_config["train_interval"] == 0
+                result = learner.train_batch(batch, step, health_diagnostics=collect_health)
+                health_packet = result.pop("_health", None)
                 step += 1
                 samples += result["samples"]
                 actor_updates += int(result["actor_updated"])
+                if health_packet is not None:
+                    try:
+                        summary = health.summarize(health_packet, config, "train_actual_update")
+                        summary.update(actor_updated=result["actor_updated"], actor_skip_reason=result["actor_skip_reason"],
+                                       sampling_applied=result["actor_sampling_enabled"],
+                                       tensor_timing="online_Q_before_critic_step; target_Q_before_EMA; V_after_value_step; logits_before_actor_step")
+                        emit_health(summary, "train")
+                    except Exception:
+                        LOGGER.exception("训练诊断日志写入失败；本次统计不完整")
                 if control:
                     control.update(step, samples, actor_updates, result, wait)
                 if step % config["training"]["log_interval"] == 0:
@@ -243,6 +317,11 @@ def run(config_path, init_bc=None, resume=None, control=None):
                     validate_and_rank()
                 if step % config["training"]["save_interval"] == 0:
                     save()
+                if diagnostic_config["enabled"] and step % diagnostic_config["probe_interval"] == 0:
+                    if prefetch is not None:
+                        prefetch.close()
+                        prefetch = None
+                    run_probe()
             save()
         finally:
             if prefetch is not None:
