@@ -10,9 +10,9 @@ import torch
 
 from .bc_core.models import network_spec
 
-VERSION = "soku_iql_bc_tcn32_joint144_v1"
-VERSION64 = "soku_iql_bc_tcn64_joint144_v1"
-VERSION256 = "soku_iql_bc_tcn256_joint144_v1"
+VERSION = "soku_iql_bc_tcn32_joint144_weather9_v2"
+VERSION64 = "soku_iql_bc_tcn64_joint144_weather9_v2"
+VERSION256 = "soku_iql_bc_tcn256_joint144_weather9_v2"
 
 
 def version_for(model):

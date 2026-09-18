@@ -43,7 +43,7 @@ def capture(batch, q1, q2, target_q1, target_q2, value, target, advantage,
                   actor_updated=torch.full_like(mask, actor_updated))
     values["loss_coefficient"] = values["effective_weight"] / denominator.clamp_min(1e-30)
     values["applied_loss_coefficient"] = values["loss_coefficient"] * actor_updated
-    for key in ("damage_reward", "win_loss_reward"):
+    for key in ("damage_reward", "wrong_block_reward", "win_loss_reward"):
         if key in batch:
             values[key] = batch[key]
     result = {key: value.detach()[mask].cpu().numpy() for key, value in values.items()}
@@ -83,7 +83,7 @@ def summarize(data, config, scope):
            "weight_semantics": "loss_coefficient_not_measured_gradient_norm",
            "diagnostic_config": cfg}
     for key in ("q1", "q2", "target_q1", "target_q2", "v", "reward", "td_target",
-                "damage_reward", "win_loss_reward"):
+                "damage_reward", "wrong_block_reward", "win_loss_reward"):
         if key in data:
             out.update(distribution(data[key], key))
     out.update(distribution(np.abs(data["q1"] - data["q2"]), "q_gap"))

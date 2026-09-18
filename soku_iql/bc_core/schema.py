@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 CQL_REPLAY_SCHEMA = "soku_cql_raw_axes_action_resources_v4"
-POLICY_INPUT_SCHEMA = "soku_bc_joint144_observation_v1"
+POLICY_INPUT_SCHEMA = "soku_bc_joint144_observation_weather9_v2"
 RESOURCE_INPUT_SCHEMA = "soku_bc_skill_variants_v1"
 CQL_TACTICAL_SCHEMA = "soku_cql_replay_tactical_v1"
 SKILL_COMMANDS = ("236", "623", "214", "22")
@@ -92,12 +92,14 @@ def policy_input_manifest() -> dict:
     from .action_space import (
         ACTION_SCHEMA, ACTION_COUNT, START_ACTION_ID, COMBAT_BUTTONS, PREVIOUS_ACTION_VOCAB, RAW_CARD_PROJECTION,
     )
+    from .weather import weather_input_manifest
     result = {
         "observation_schema": POLICY_INPUT_SCHEMA,
         "raw_dataset_schema": CQL_REPLAY_SCHEMA,
         "cql_tactical_schema": CQL_TACTICAL_SCHEMA,
         "state_continuous": list(STATE_CONTINUOUS_FEATURES),
         "state_categorical": list(STATE_CATEGORICAL_FEATURES),
+        "weather_encoding": weather_input_manifest(),
         "tactical_state": list(TACTICAL_FEATURES),
         "object_numerical": list(OBJECT_NUMERICAL_FEATURES),
         "object_categorical": list(OBJECT_CATEGORICAL_FEATURES),
@@ -123,4 +125,3 @@ def policy_input_manifest() -> dict:
             "removed_inputs": ["skill_levels", "skill_effective_levels", "all_card_state"],
         }
     return result
-

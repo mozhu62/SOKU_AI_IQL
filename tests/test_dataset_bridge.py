@@ -15,6 +15,7 @@ def write_shard(path):
     n = 12
     state = np.zeros((n, 18), np.float32)
     state[:, 4] = state[:, 11] = 1
+    state[:, 6] = np.arange(n)
     state[:, 16] = [100, 100, 90, 90, 90, 90, 100, 100, 100, 100, 100, 100]
     state[:, 17] = [100, 80, 80, 30, 0, 100, 100, 100, 100, 100, 100, 100]
     valid = np.ones(n, bool)
@@ -64,3 +65,19 @@ def test_npz_to_bc_and_iql_current_observations_agree(tmp_path):
     np.testing.assert_allclose(shard["iql_reward"][:6], [.02, -.01, .05, .03, 0, 0], atol=1e-7)
     assert shard["iql_terminal"][3]
     assert iql.normalization == bc.normalization == normalization
+
+
+def test_wrong_block_penalty_is_applied_once_on_entry(tmp_path):
+    write_shard(tmp_path / "train.npz")
+    with np.load(tmp_path / "train.npz", allow_pickle=False) as source:
+        raw = {key: source[key] for key in source.files}
+    raw["state_categorical"][2:5, 0] = 159
+    np.savez(tmp_path / "train.npz", **raw)
+    config = copy.deepcopy(DEFAULTS)
+    config["data"]["directory"] = str(tmp_path)
+    config["reward"] = dict(damage_dealt=.001, damage_taken=.001, wrong_block=.1, win=0.0, loss=0.0)
+    store = IQLReplayStore.__new__(IQLReplayStore)
+    store.config, store.root, store.lock = config, tmp_path, __import__("threading").Lock()
+    store.cache, store.hits, store.misses, store.bytes, store.budget = {}, 0, 0, 0, 1 << 30
+    shard = store.get("train.npz")
+    np.testing.assert_allclose(shard["diagnostic_wrong_block_reward"][:5], [0, -.1, 0, 0, 0])

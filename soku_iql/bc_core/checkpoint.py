@@ -15,7 +15,7 @@ from .schema import policy_input_manifest
 
 def adapt_latest_bc(package):
     """只适配已知同构 BC256；先核对完整清单，不能用改版本号掩盖结构差异。"""
-    source_version = 'soku_bc_tcn256_joint144_v1'
+    source_version = 'soku_bc_tcn256_joint144_weather9_v2'
     if package.get('network_version') != source_version:
         return package
     if package.get('algorithm') != 'bc':
@@ -50,10 +50,11 @@ def load(path: Path):
         raise ValueError("仅接受 BC checkpoint；CQL/PPO/IQL 权重不能作为 BC 续训模型，请从随机初始化开始")
     package = adapt_latest_bc(package)
     version = package.get("network_version")
-    if version not in (NETWORK_VERSION, "soku_iql_tcn64_joint144_v1", "soku_iql_tcn256_joint144_v1"):
+    if version not in (NETWORK_VERSION, "soku_iql_tcn64_joint144_weather9_v2",
+                       "soku_iql_tcn256_joint144_weather9_v2"):
         raise ValueError(
             "BC checkpoint schema 不兼容：当前版本为 228D 状态、256D 当前编码和 Joint144 输出，"
-            "已移除卡牌输入/输出和技能等级；旧 Joint432 权重不允许部分加载。"
+            "天气已压缩为 normal+八种特殊天气；旧天气词表与 Joint432 权重不允许部分加载。"
             "请去掉 --resume，从随机初始化开始并使用新输出目录"
         )
     if package.get("spec", {}).get("network_version") != version:

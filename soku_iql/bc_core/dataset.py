@@ -20,6 +20,7 @@ from .resources import (
 )
 from .storage import atomic_json
 from .action_diagnostics import DIAGNOSTIC_VERSION, dataset_action_counts, merge_dataset_counts
+from .weather import compress_weather
 
 
 LOGGER = logging.getLogger(__name__)
@@ -340,8 +341,11 @@ class ReplayStore:
 
     def observation(self, shard, indices):
         mean, std = self.norm["state"]
+        categorical = shard["state_categorical"][indices].astype(np.int64)
+        # 原始 NPZ 保持 0..21；只在模型入口压缩，避免改写既有数据集。
+        categorical[..., -1] = compress_weather(categorical[..., -1])
         result = {"state_continuous": np.clip((shard["state_continuous"][indices] - mean) / std, -10, 10),
-                  "state_categorical": shard["state_categorical"][indices].astype(np.int64),
+                  "state_categorical": categorical,
                   "tactical_state": shard["tactical_state"][indices].astype(np.float32)}
         result.update(resource_observation(shard, indices))
         result["previous_joint_action_id"] = shard["previous_joint_action_id"][indices]
@@ -364,4 +368,3 @@ class ReplayStore:
             result.update({f"{side}_object_numerical": numeric, f"{side}_object_categorical": category,
                            f"{side}_object_mask": mask})
         return result
-

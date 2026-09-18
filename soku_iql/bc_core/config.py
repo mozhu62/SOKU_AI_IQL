@@ -7,9 +7,9 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-NETWORK_VERSION = "soku_bc_tcn32_joint144_v1"
+NETWORK_VERSION = "soku_bc_tcn32_joint144_weather9_v2"
 MODEL_DEFAULTS = {
-    "action_vocab_size": 2048, "block_vocab_size": 512, "weather_vocab_size": 32,
+    "action_vocab_size": 2048, "block_vocab_size": 512, "weather_vocab_size": 9,
     "action_embedding_dim": 32, "block_embedding_dim": 8, "weather_embedding_dim": 8,
     "current_hidden_dim": 256, "object_hidden_dim": 64, "object_set_dim": 128,
     "temporal_hidden_dim": 256, "temporal_output_dim": 256, "fusion_dim": 1024,
@@ -42,9 +42,9 @@ MODULES = ("current_encoder", "object_encoder", "tcn", "fusion", "policy_head")
 
 def network_version_for(model):
     if model.get("temporal_mode", "tcn") == "tcn256":
-        return "soku_iql_tcn256_joint144_v1"
+        return "soku_iql_tcn256_joint144_weather9_v2"
     if model.get("temporal_mode", "tcn") == "tcn64":
-        return "soku_iql_tcn64_joint144_v1"
+        return "soku_iql_tcn64_joint144_weather9_v2"
     if model.get("temporal_mode", "tcn") != "tcn":
         raise ValueError("当前 BC 网络已删除 GRU，model.temporal_mode 必须为 tcn")
     return NETWORK_VERSION
@@ -156,6 +156,8 @@ def validate(config: dict) -> dict:
         raise ValueError("object_set_dim 必须等于 object_hidden_dim 的两倍")
     if model["object_embedding_mode"] not in ("shared", "separate"):
         raise ValueError("object_embedding_mode 无效")
+    if model["weather_vocab_size"] != MODEL_DEFAULTS["weather_vocab_size"]:
+        raise ValueError("当前架构固定将天气压缩为 normal+八种特殊天气，weather_vocab_size 必须为 9")
     for key in ("current_hidden_dim", "object_hidden_dim", "object_set_dim", "temporal_hidden_dim",
                 "temporal_output_dim", "fusion_dim"):
         if model[key] != MODEL_DEFAULTS[key]:

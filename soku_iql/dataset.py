@@ -3,7 +3,11 @@ from __future__ import annotations
 import numpy as np
 
 from .bc_core.dataset import ReplayStore, read_shard, split_replays
-from .bc_core.schema import STATE_CONTINUOUS_FEATURES
+from .bc_core.schema import STATE_CATEGORICAL_FEATURES, STATE_CONTINUOUS_FEATURES
+
+
+WRONG_BLOCK_ACTION_MIN = 159
+WRONG_BLOCK_ACTION_MAX = 166
 
 
 def fixed_split(config, progress, cancelled=lambda: False):
@@ -36,6 +40,11 @@ class IQLReplayStore(ReplayStore):
                        - np.maximum(own[:-1] - own[1:], 0) * self.config["reward"]["damage_taken"])
         reward[~valid] = 0
         damage_reward = reward.copy()
+        own_action = shard["state_categorical"][:, STATE_CATEGORICAL_FEATURES.index("self_action")]
+        own_action_frame = state[:, STATE_CONTINUOUS_FEATURES.index("self_action_frame_count")]
+        wrong_block_event = wrong_block_events(own_action, own_action_frame, valid)
+        wrong_block_reward = -wrong_block_event.astype(np.float32) * self.config["reward"]["wrong_block"]
+        reward += wrong_block_reward
         outcome = ko_outcomes(own, enemy, valid, terminal)
         reward += np.where(outcome > 0, self.config['reward'].get('win', 0.0),
                            np.where(outcome < 0, -self.config['reward'].get('loss', 0.0), 0)).astype(np.float32)
@@ -44,6 +53,7 @@ class IQLReplayStore(ReplayStore):
         # 终局只关闭 bootstrap；片段末尾若存在真实后继且未终局，仍使用该后继的 V。
         shard.update(iql_reward=reward, iql_terminal=terminal,
                      diagnostic_damage_reward=damage_reward,
+                     diagnostic_wrong_block_reward=wrong_block_reward,
                      diagnostic_win_loss_reward=np.where(outcome > 0, self.config['reward'].get('win', 0.0),
                          np.where(outcome < 0, -self.config['reward'].get('loss', 0.0), 0)).astype(np.float32))
         size = sum(value.nbytes for value in shard.values())
@@ -87,6 +97,7 @@ class IQLReplayStore(ReplayStore):
             pieces.append(dict(observation=self.observation(shard, indices), burn_lengths=burn_lengths.astype(np.int64),
                                action=shard["joint_action_id"][labels], reward=shard["iql_reward"][labels],
                                damage_reward=shard["diagnostic_damage_reward"][labels],
+                               wrong_block_reward=shard["diagnostic_wrong_block_reward"][labels],
                                win_loss_reward=shard["diagnostic_win_loss_reward"][labels],
                                terminal=shard["iql_terminal"][labels], mask=mask,
                                previous_action=shard["previous_expert_action_id"][labels]))
@@ -95,6 +106,15 @@ class IQLReplayStore(ReplayStore):
         if diagnostic_metadata:
             result["_diagnostic_meta"] = identities
         return result
+
+
+def wrong_block_events(actions, action_frames, valid):
+    """把首次进入或硬直帧重置识别为一次错防，惩罚归属到导致该状态的前一转移。"""
+    events = np.zeros(len(actions), bool)
+    wrong = (actions >= WRONG_BLOCK_ACTION_MIN) & (actions <= WRONG_BLOCK_ACTION_MAX)
+    entered = wrong[1:] & (~wrong[:-1] | (actions[1:] != actions[:-1]) | (action_frames[1:] <= action_frames[:-1]))
+    events[:-1] = valid[:-1] & entered
+    return events
 
 
 def ko_outcomes(own, enemy, valid, terminal):
