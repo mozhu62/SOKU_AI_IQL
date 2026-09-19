@@ -54,7 +54,7 @@ reward:
   pressure: 1.0
   # 水平距离超过 300 后，每个有效转移持续扣除一个微小固定值。
   far_distance_threshold: 300.0
-  far_distance_penalty: 0.0001
+  far_distance_penalty: 1.0
   damage_dealt: 0.001
   damage_taken: 0.001
 output:
