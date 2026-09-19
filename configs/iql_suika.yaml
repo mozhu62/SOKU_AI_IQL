@@ -51,7 +51,7 @@ reward:
   win: 10.0
   loss: 10.0
   # 对手防御且灵力下降时，每个有效转移奖励一次；不把单纯举盾计为压制。
-  pressure: 0.0
+  pressure: 0.05
   damage_dealt: 0.001
   damage_taken: 0.001
 output:
