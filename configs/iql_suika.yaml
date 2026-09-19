@@ -3,7 +3,7 @@ data:
   directory: ../replay_cards_reimu_training_big_mirror
   split_file: ../replay_cards_reimu_training_big_mirror/train_val_split.json
   # 服务器按约 128GB 内存配置：给系统、Python 临时数组和 pinned batch 保留约 48GB。
-  cache_gb: 80.0
+  cache_gb: 32.0
 training:
   # 当前训练器为单进程单卡；显式固定主卡，避免服务器默认 CUDA 设备变化。
   device: cuda:0
