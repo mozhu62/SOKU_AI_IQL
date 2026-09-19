@@ -41,6 +41,8 @@ def tags(identity, action, cfg):
     for key in ("self_guarding", "opponent_guarding", "self_hurt_state", "opponent_hurt_state"):
         if tactical[key]:
             result.append(key)
+    if identity.get("pressure_event"):
+        result.append("pressure_event")
     return result
 
 
@@ -88,13 +90,14 @@ class FixedProbe:
         coverage = {tag: sum(tag in item["tags"] for item in self.selected) for tag in groups}
         expected = ["near", "mid", "far", "hp_advantage", "hp_disadvantage", "airborne", "ground",
                     "self_guarding", "opponent_guarding", "self_hurt_state", "opponent_hurt_state",
+                    "pressure_event",
                     *["action:" + name for name in sorted(set(class_map(cfg)))]]
         manifest = dict(version=1, split_hash=store.split["sha256"], seed=cfg["probe_seed"],
                         sampling={key: self.sample_config[key] for key in
                                   ("batch_size", "sequence_length", "burn_in", "replays_per_batch")},
                         batch_hashes=hashes, selected=self.selected, coverage=coverage,
                         missing_coverage=[tag for tag in expected if not coverage.get(tag)],
-                        unsupported_tags=["pressure_relation", "flight_action", "defense_action", "skill_action", "spell_action"],
+                        unsupported_tags=["flight_action", "defense_action", "skill_action", "spell_action"],
                         class_map=class_map(cfg), near_distance=cfg["near_distance"], far_distance=cfg["far_distance"])
         encoded = json.dumps(manifest, sort_keys=True, ensure_ascii=False).encode()
         self.id = hashlib.sha256(encoded).hexdigest()

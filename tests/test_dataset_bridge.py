@@ -8,7 +8,7 @@ from soku_iql.bc_core.action_space import ACTION_SCHEMA
 from soku_iql.bc_core.config import DEFAULTS
 from soku_iql.bc_core.dataset import ReplayStore
 from soku_iql.bc_core.schema import manifest
-from soku_iql.dataset import IQLReplayStore
+from soku_iql.dataset import IQLReplayStore, pressure_events
 
 
 def write_shard(path):
@@ -81,3 +81,12 @@ def test_wrong_block_penalty_is_applied_once_on_entry(tmp_path):
     store.cache, store.hits, store.misses, store.bytes, store.budget = {}, 0, 0, 0, 1 << 30
     shard = store.get("train.npz")
     np.testing.assert_allclose(shard["diagnostic_wrong_block_reward"][:5], [0, -.1, 0, 0, 0])
+
+
+def test_pressure_requires_guard_and_spirit_loss():
+    event, loss = pressure_events(
+        np.array([False, True, True, False, False]),
+        np.array([1000, 900, 900, 800, 700], np.float32),
+        np.array([True, True, True, True, False]))
+    np.testing.assert_array_equal(event, [True, False, True, False, False])
+    np.testing.assert_allclose(loss, [100, 0, 100, 0, 0])

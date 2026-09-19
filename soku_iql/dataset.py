@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .bc_core.dataset import ReplayStore, read_shard, split_replays
-from .bc_core.schema import STATE_CATEGORICAL_FEATURES, STATE_CONTINUOUS_FEATURES
+from .bc_core.schema import STATE_CATEGORICAL_FEATURES, STATE_CONTINUOUS_FEATURES, TACTICAL_FEATURES
 
 
 WRONG_BLOCK_ACTION_MIN = 159
@@ -32,6 +32,7 @@ class IQLReplayStore(ReplayStore):
         state = shard["state_continuous"]
         own = state[:, STATE_CONTINUOUS_FEATURES.index("self_hp")]
         enemy = state[:, STATE_CONTINUOUS_FEATURES.index("opponent_hp")]
+        enemy_spirit = state[:, STATE_CONTINUOUS_FEATURES.index("opponent_current_spirit")]
         valid = np.zeros(len(state), bool)
         for start, end in shard["segments"]:
             valid[start:end] = True
@@ -43,8 +44,12 @@ class IQLReplayStore(ReplayStore):
         own_action = shard["state_categorical"][:, STATE_CATEGORICAL_FEATURES.index("self_action")]
         own_action_frame = state[:, STATE_CONTINUOUS_FEATURES.index("self_action_frame_count")]
         wrong_block_event = wrong_block_events(own_action, own_action_frame, valid)
-        wrong_block_reward = -wrong_block_event.astype(np.float32) * self.config["reward"]["wrong_block"]
+        wrong_block_reward = -wrong_block_event.astype(np.float32) * self.config["reward"].get("wrong_block", 0.0)
         reward += wrong_block_reward
+        enemy_guarding = shard["tactical_state"][:, TACTICAL_FEATURES.index("opponent_guarding")].astype(bool)
+        pressure_event, pressure_spirit_loss = pressure_events(enemy_guarding, enemy_spirit, valid)
+        pressure_reward = pressure_event.astype(np.float32) * self.config["reward"].get("pressure", 0.0)
+        reward += pressure_reward
         outcome = ko_outcomes(own, enemy, valid, terminal)
         reward += np.where(outcome > 0, self.config['reward'].get('win', 0.0),
                            np.where(outcome < 0, -self.config['reward'].get('loss', 0.0), 0)).astype(np.float32)
@@ -54,6 +59,9 @@ class IQLReplayStore(ReplayStore):
         shard.update(iql_reward=reward, iql_terminal=terminal,
                      diagnostic_damage_reward=damage_reward,
                      diagnostic_wrong_block_reward=wrong_block_reward,
+                     diagnostic_pressure_event=pressure_event,
+                     diagnostic_pressure_spirit_loss=pressure_spirit_loss,
+                     diagnostic_pressure_reward=pressure_reward,
                      diagnostic_win_loss_reward=np.where(outcome > 0, self.config['reward'].get('win', 0.0),
                          np.where(outcome < 0, -self.config['reward'].get('loss', 0.0), 0)).astype(np.float32))
         size = sum(value.nbytes for value in shard.values())
@@ -98,12 +106,18 @@ class IQLReplayStore(ReplayStore):
             if diagnostic_metadata:
                 identities.extend([{"shard": names[shard_id], "frame": int(labels[row, col]),
                                     "state": shard["state_continuous"][labels[row, col]].tolist(),
-                                    "tactical": shard["tactical_state"][labels[row, col]].tolist()}
+                                    "tactical": shard["tactical_state"][labels[row, col]].tolist(),
+                                    "pressure_event": bool(shard["diagnostic_pressure_event"][labels[row, col]]),
+                                    "pressure_spirit_loss": float(
+                                        shard["diagnostic_pressure_spirit_loss"][labels[row, col]])}
                                    for row, col in np.argwhere(mask)])
             pieces.append(dict(observation=self.observation(shard, indices), burn_lengths=burn_lengths.astype(np.int64),
                                action=shard["joint_action_id"][labels], reward=shard["iql_reward"][labels],
                                damage_reward=shard["diagnostic_damage_reward"][labels],
                                wrong_block_reward=shard["diagnostic_wrong_block_reward"][labels],
+                               pressure_event=shard["diagnostic_pressure_event"][labels],
+                               pressure_spirit_loss=shard["diagnostic_pressure_spirit_loss"][labels],
+                               pressure_reward=shard["diagnostic_pressure_reward"][labels],
                                win_loss_reward=shard["diagnostic_win_loss_reward"][labels],
                                terminal=shard["iql_terminal"][labels], mask=mask,
                                n_step_reward=returns, n_step_discount=discounts,
@@ -124,6 +138,18 @@ def wrong_block_events(actions, action_frames, valid):
     entered = wrong[1:] & (~wrong[:-1] | (actions[1:] != actions[:-1]) | (action_frames[1:] <= action_frames[:-1]))
     events[:-1] = valid[:-1] & entered
     return events
+
+
+def pressure_events(opponent_guarding, opponent_spirit, valid):
+    """防御状态与灵力下降同时出现时记一次压制，并归属到造成变化的前一转移。"""
+    events = np.zeros(len(opponent_spirit), bool)
+    spirit_loss = np.zeros(len(opponent_spirit), np.float32)
+    loss = np.maximum(opponent_spirit[:-1] - opponent_spirit[1:], 0).astype(np.float32)
+    # 兼顾进入防御的命中与破防瞬间；必须伴随真实灵力下降，避免把单纯举盾当成压制。
+    guarded = opponent_guarding[:-1] | opponent_guarding[1:]
+    events[:-1] = valid[:-1] & guarded & (loss > 0)
+    spirit_loss[:-1] = np.where(events[:-1], loss, 0)
+    return events, spirit_loss
 
 
 def ko_outcomes(own, enemy, valid, terminal):
