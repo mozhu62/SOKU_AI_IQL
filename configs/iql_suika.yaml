@@ -26,7 +26,7 @@ iql:
   # 8 步折扣回报；终局提前停止，片段截断只从最后真实后继状态 bootstrap。
   n_step: 1
   gamma: 0.999165
-  expectile: 0.7
+  expectile: 0.3
   advantage_beta: 1.0
   max_weight: 100.0
   target_tau: 0.005
