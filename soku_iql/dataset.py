@@ -26,9 +26,9 @@ class IQLReplayStore(ReplayStore):
                 return self.cache[name]
             self.misses += 1
         path = self.root / name
-        shard = read_shard(path, self.config["data"]["vertical_positive_is_down"])
-        with np.load(path, allow_pickle=False) as raw:
-            terminal = raw["terminated"].astype(bool)
+        shard = read_shard(path, self.config["data"]["vertical_positive_is_down"], keep_terminal=True)
+        # IQL 奖励需要终局标志，直接复用本次解压结果，避免缓存未命中时二次打开 NPZ。
+        terminal = shard.pop("terminated").astype(bool)
         state = shard["state_continuous"]
         own = state[:, STATE_CONTINUOUS_FEATURES.index("self_hp")]
         enemy = state[:, STATE_CONTINUOUS_FEATURES.index("opponent_hp")]

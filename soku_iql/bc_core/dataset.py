@@ -97,7 +97,7 @@ class Moments:
         return {"mean": self.mean.tolist(), "std": np.where(std < 1e-6, 1.0, std).tolist(), "count": self.count}
 
 
-def read_shard(path: Path, positive_down: bool):
+def read_shard(path: Path, positive_down: bool, keep_terminal: bool = False):
     try:
         with np.load(path, allow_pickle=False) as source:
             meta = json.loads(str(source["metadata_json"].item()))
@@ -196,7 +196,8 @@ def read_shard(path: Path, positive_down: bool):
             raise ValueError("没有有效连续转移")
         for key in ("action_horizontal", "action_vertical", "action_duration", "action_buttons", "transition_valid", "episode_id"):
             shard.pop(key)
-        shard.pop("terminated")
+        if not keep_terminal:
+            shard.pop("terminated")
         return shard
     except Exception as error:
         raise ValueError(f"分片读取失败 {path.name}：{error}") from error

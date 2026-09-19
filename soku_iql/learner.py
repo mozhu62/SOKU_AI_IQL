@@ -19,6 +19,14 @@ def tensor_batch(value, device):
     return torch.as_tensor(value).to(device, non_blocking=True)
 
 
+def pin_batch(value):
+    """在数据线程固定批次内存，使后台 CPU→GPU 复制可以真正异步执行。"""
+    if isinstance(value, dict):
+        return {key: pin_batch(item) for key, item in value.items() if not key.startswith("_diagnostic")}
+    tensor = torch.as_tensor(value)
+    return tensor if tensor.is_pinned() else tensor.pin_memory()
+
+
 def expectile_loss(diff, expectile):
     return torch.where(diff > 0, expectile, 1 - expectile) * diff.square()
 

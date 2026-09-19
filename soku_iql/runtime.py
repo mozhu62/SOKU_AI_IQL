@@ -21,7 +21,7 @@ from .bc_core.storage import atomic_json
 from .config import load, validate_resume, ACTOR_SAMPLING, ACTOR_WEIGHTING
 from .amp_state import restore_grad_scaler
 from .dataset import IQLReplayStore, fixed_split
-from .learner import Learner
+from .learner import Learner, pin_batch, tensor_batch
 from . import health
 from .health_probe import FixedProbe
 
@@ -56,17 +56,44 @@ def aggregate(rows):
 
 
 class Prefetch:
-    def __init__(self, store, config, step):
-        self.store, self.config, self.next_step = store, config, step
+    def __init__(self, store, config, step, device):
+        self.store, self.config, self.next_step, self.device = store, config, step, device
+        self.cuda = device.type == "cuda"
+        self.transfer_stream = torch.cuda.Stream(device=device) if self.cuda else None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iql-data")
         self.pending = deque()
         for _ in range(config["training"]["prefetch_batches"]):
             self.submit()
 
+    def prepare(self, seed_step):
+        before_hits, before_misses = self.store.hits, self.store.misses
+        started = time.perf_counter()
+        rng = np.random.default_rng(np.random.SeedSequence([self.config["seed"], seed_step, 0]))
+        batch = self.store.sample(rng, self.config["training"])
+        build_seconds = time.perf_counter() - started
+        pin_seconds = h2d_seconds = 0.0
+        if self.cuda:
+            started = time.perf_counter()
+            batch = pin_batch(batch)
+            pin_seconds = time.perf_counter() - started
+            started = time.perf_counter()
+            # 数据线程使用独立 stream 上传未来批次，与主 stream 的当前批次计算重叠。
+            with torch.cuda.device(self.device), torch.cuda.stream(self.transfer_stream):
+                batch = tensor_batch(batch, self.device)
+            self.transfer_stream.synchronize()
+            h2d_seconds = time.perf_counter() - started
+        return batch, {
+            "data_build_seconds": build_seconds,
+            "pin_memory_seconds": pin_seconds,
+            "h2d_seconds": h2d_seconds,
+            "cache_hits": self.store.hits - before_hits,
+            "cache_misses": self.store.misses - before_misses,
+        }
+
     def submit(self):
-        rng = np.random.default_rng(np.random.SeedSequence([self.config["seed"], self.next_step, 0]))
+        seed_step = self.next_step
         self.next_step += 1
-        self.pending.append(self.executor.submit(self.store.sample, rng, self.config["training"]))
+        self.pending.append(self.executor.submit(self.prepare, seed_step))
 
     def get(self):
         batch = self.pending.popleft().result()
@@ -315,12 +342,13 @@ def run(config_path, init_bc=None, resume=None, control=None):
                             break
                     control.publish(state="training")
                 if prefetch is None:
-                    prefetch = Prefetch(store, config, step)
+                    prefetch = Prefetch(store, config, step, learner.device)
                 started = time.perf_counter()
-                batch = prefetch.get()
+                batch, data_metrics = prefetch.get()
                 wait = time.perf_counter() - started
                 collect_health = diagnostic_config["enabled"] and (step + 1) % diagnostic_config["train_interval"] == 0
                 result = learner.train_batch(batch, step, health_diagnostics=collect_health)
+                result.update(data_metrics)
                 health_packet = result.pop("_health", None)
                 step += 1
                 samples += result["samples"]
@@ -339,9 +367,12 @@ def run(config_path, init_bc=None, resume=None, control=None):
                 if step % config["training"]["log_interval"] == 0:
                     result.update(data_wait_seconds=wait, steps_per_second=1 / max(wait + result["optimization_seconds"], 1e-9))
                     record("train", result)
-                    LOGGER.info("step=%d IQL V=%.4f Q=%.4f actor=%s weight=%.3f speed=%.2f step/s warmup=%s",
+                    LOGGER.info("step=%d IQL V=%.4f Q=%.4f actor=%s weight=%.3f speed=%.2f step/s "
+                                "data_wait=%.4fs build=%.4fs pin=%.4fs h2d=%.4fs cache=%d/%d warmup=%s",
                                 step, result["value_loss"], result["q_loss"], result["actor_loss"], result["weight_mean"],
-                                result["steps_per_second"], result["warmup"])
+                                result["steps_per_second"], result["data_wait_seconds"],
+                                result["data_build_seconds"], result["pin_memory_seconds"], result["h2d_seconds"],
+                                result["cache_hits"], result["cache_misses"], result["warmup"])
                 if step % config["training"]["validation_interval"] == 0 and not stop and not cancelled():
                     prefetch.close()
                     prefetch = None

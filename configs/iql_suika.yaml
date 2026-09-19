@@ -2,25 +2,29 @@ data:
   # 可使用独立于 BC 的 IQL 数据与验证集；split_file 必须覆盖当前目录全部 NPZ。
   directory: ../replay_cards_reimu_training_big_mirror
   split_file: ../replay_cards_reimu_training_big_mirror/train_val_split.json
-  cache_gb: 32.0
+  # 服务器按约 128GB 内存配置：给系统、Python 临时数组和 pinned batch 保留约 48GB。
+  cache_gb: 80.0
 training:
-  device: cuda
-  batch_size: 64
+  # 当前训练器为单进程单卡；显式固定主卡，避免服务器默认 CUDA 设备变化。
+  device: cuda:0
+  batch_size: 96
   sequence_length: 32
   burn_in: 255
   total_steps: 100000
   amp: true
+  # 后台批次会使用 pinned memory 并提前上传显存；4 批可吸收偶发 NPZ 缓存未命中。
   prefetch_batches: 4
   log_interval: 20
-  save_interval: 1000
-  validation_interval: 1000
+  save_interval: 2000
+  validation_interval: 2000
   validation_batches: 20
-  replays_per_batch: 8
-  cpu_threads: 4
+  replays_per_batch: 12
+  cpu_threads: 8
 iql:
   # 恢复IQL优势加权，与下方关键帧权重相乘；保留Actor从第一步更新。
   actor_advantage_weighting: true
-  n_step: 8
+  # 当前实现固定单步 TD；设置其他值会在启动配置校验阶段被拒绝。
+  n_step: 1
   gamma: 0.999165
   expectile: 0.7
   advantage_beta: 1.0
@@ -49,4 +53,5 @@ reward:
   damage_dealt: 0.001
   damage_taken: 0.001
 output:
-  directory: outputs/iql_suika_tcn256
+  # batch/采样口径已变化，必须使用新目录，不能伪装成旧实验精确续训。
+  directory: outputs/iql_suika_tcn256_server
