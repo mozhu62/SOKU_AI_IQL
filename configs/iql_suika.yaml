@@ -20,7 +20,7 @@ training:
 iql:
   # 恢复IQL优势加权，与下方关键帧权重相乘；保留Actor从第一步更新。
   actor_advantage_weighting: true
-  n_step: 1
+  n_step: 8
   gamma: 0.999165
   expectile: 0.7
   advantage_beta: 1.0
