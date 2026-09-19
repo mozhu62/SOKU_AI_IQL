@@ -3,7 +3,7 @@ import {command,useQuery,type Row} from '../api';
 import {Card,DataTable,ConfirmButton} from '../components/common';
 import {number} from '../lib/utils';
 
-const hints:Record<string,string>={batch_size:'每批序列数量；续训锁定',sequence_length:'每序列监督位置数；不是 TCN 感受野',burn_in:'31 帧真实前导历史，固定',replays_per_batch:'每批回放来源抽取次数；不是加载 worker',amp:'CUDA FP16 混合精度',gamma:'未来奖励折扣；不允许在线改变回报定义',expectile:'V 对较高 Q 的偏重程度',advantage_beta:'exp(beta×优势) 的强度，不是探索温度',max_weight:'Actor 优势权重上限',target_tau:'目标 Q 的 EMA 更新比例',actor_lr:'Actor 学习率',critic_lr:'双 Q 学习率',value_lr:'V 学习率',actor_warmup_steps:'该步数前只更新 Q/V',damage_dealt:'对方每扣 1 HP 的奖励系数',damage_taken:'己方每扣 1 HP 的惩罚系数',cache_gb:'解压后的分片内存预算，不是显存',prefetch_batches:'单后台线程的预取队列深度，不增加线程数',cpu_threads:'PyTorch CPU 运算线程，不是 NPZ 加载 worker',validation_batches:'固定种子验证批次数，不代表全量验证'};
+const hints:Record<string,string>={batch_size:'每批序列数量；续训锁定',sequence_length:'每序列监督位置数；不是 TCN 感受野',burn_in:'31 帧真实前导历史，固定',replays_per_batch:'每批回放来源抽取次数；不是加载 worker',amp:'CUDA FP16 混合精度',n_step:'TD累计的最大真实转移步数；正整数，越大越占显存',gamma:'未来奖励折扣；不允许在线改变回报定义',expectile:'V 对较高 Q 的偏重程度',advantage_beta:'exp(beta×优势) 的强度，不是探索温度',max_weight:'Actor 优势权重上限',target_tau:'目标 Q 的 EMA 更新比例',actor_lr:'Actor 学习率',critic_lr:'双 Q 学习率',value_lr:'V 学习率',actor_warmup_steps:'该步数前只更新 Q/V',damage_dealt:'对方每扣 1 HP 的奖励系数',damage_taken:'己方每扣 1 HP 的惩罚系数',cache_gb:'解压后的分片内存预算，不是显存',prefetch_batches:'单后台线程的预取队列深度，不增加线程数',cpu_threads:'PyTorch CPU 运算线程，不是 NPZ 加载 worker',validation_batches:'固定种子验证批次数，不代表全量验证'};
 export function Parameters({state}:{state:Row}){
   const query=useQuery('parameters',3000),models=useQuery('models',3000),history=useQuery('history?kind=configuration&limit=100',3000);
   const [draft,setDraft]=useState<Row>({}),[error,setError]=useState('');

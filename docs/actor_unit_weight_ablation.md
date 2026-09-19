@@ -1,6 +1,6 @@
 # Actor 权重恒1消融
 
-当前配置：actor_advantage_weighting=false，actor_warmup_steps=0，actor_sampling.enabled=false，actor_weighting.enabled=false。Actor使用全部有效位置的普通等权CE，Q/V和单步TD照常训练。保留neutral_weight编辑值但关闭其生效开关。
+当前配置：actor_advantage_weighting=false，actor_warmup_steps=0，actor_sampling.enabled=false，actor_weighting.enabled=false。Actor使用全部有效位置的普通等权CE，Q/V和配置指定的N-step TD照常训练。保留neutral_weight编辑值但关闭其生效开关。
 
 日志：actor_objective=plain_bc，actor_advantage_weighting=false，weight_mean=1，weight_max=1。检查actor_updated确认实际更新；AMP溢出仍可跳步。
 

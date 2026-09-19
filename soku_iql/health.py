@@ -46,6 +46,9 @@ def capture(batch, q1, q2, target_q1, target_q2, value, target, advantage,
     for key in ("damage_reward", "wrong_block_reward", "win_loss_reward"):
         if key in batch:
             values[key] = batch[key]
+    for key in ("n_step_reward", "n_step_discount", "n_step_actual"):
+        if key in batch:
+            values[key] = batch[key]
     result = {key: value.detach()[mask].cpu().numpy() for key, value in values.items()}
     if logits is not None:
         result["logits"] = logits.detach()[mask].cpu().numpy()
@@ -79,11 +82,14 @@ def summarize(data, config, scope):
     cfg, iql = config["diagnostics"], config["iql"]
     count = len(data["action"])
     out = {"scope": scope, "samples": count, "q_scope": "expert_action",
+           "n_step": iql["n_step"],
+           "n_step_actual_mean": float(np.mean(data["n_step_actual"])) if "n_step_actual" in data else 1.0,
            "advantage_source": "min(target_q1,target_q2)-v",
            "weight_semantics": "loss_coefficient_not_measured_gradient_norm",
            "diagnostic_config": cfg}
     for key in ("q1", "q2", "target_q1", "target_q2", "v", "reward", "td_target",
-                "damage_reward", "wrong_block_reward", "win_loss_reward"):
+                "damage_reward", "wrong_block_reward", "win_loss_reward",
+                "n_step_reward", "n_step_discount", "n_step_actual"):
         if key in data:
             out.update(distribution(data[key], key))
     out.update(distribution(np.abs(data["q1"] - data["q2"]), "q_gap"))

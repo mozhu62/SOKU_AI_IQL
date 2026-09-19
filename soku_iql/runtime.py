@@ -50,6 +50,8 @@ def aggregate(rows):
     changes = sum(row["change_count"] for row in rows)
     eligible = sum(row["previous_eligible"] for row in rows)
     result.update(samples=samples, change_count=changes,
+                  n_step=rows[0].get("n_step", 1),
+                  n_step_actual_mean=sum(row.get("n_step_actual_mean", 1.0) * row["samples"] for row in rows) / samples,
                   change_top1=sum(row["change_correct"] for row in rows) / changes if changes else None,
                   previous_action_baseline=sum(row["previous_correct"] for row in rows) / eligible if eligible else None)
     return result
@@ -300,8 +302,9 @@ def run(config_path, init_bc=None, resume=None, control=None):
                 except Exception:
                     LOGGER.exception("验证统计日志写入失败；本次健康报告不完整")
             run_probe()
-            LOGGER.info("验证 samples=%d NLL=%.4f Top1=%.3f TD_MSE=%.4f EV=%s change_Top1=%s",
-                        result["samples"], result["nll"], result["top1"], result["td_mse"], result["ev"], result["change_top1"])
+            LOGGER.info("验证 samples=%d N=%d/实际%.2f NLL=%.4f Top1=%.3f TD_MSE=%.4f EV=%s change_Top1=%s",
+                        result["samples"], result["n_step"], result["n_step_actual_mean"], result["nll"],
+                        result["top1"], result["td_mse"], result["ev"], result["change_top1"])
             if control:
                 control.timing("validation", time.perf_counter()-started)
             return result

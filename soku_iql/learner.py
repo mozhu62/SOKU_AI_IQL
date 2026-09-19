@@ -41,7 +41,16 @@ def td_target(rewards, terminal, next_value, gamma):
 
 
 def batch_td_target(batch, values, gamma):
-    # 当前每个监督位置仅使用真实紧邻后继，训练与验证共用同一公式。
+    if "n_step_reward" in batch:
+        index = batch["bootstrap_index"].long()
+        if index.shape != batch["n_step_reward"].shape:
+            raise ValueError("N-step bootstrap 索引形状与奖励不一致")
+        if index.numel() and (int(index.min()) < 0 or int(index.max()) >= values.shape[1]):
+            raise ValueError("N-step bootstrap 索引超出 Value 时序范围")
+        successor = values.gather(1, index)
+        return batch["n_step_reward"] + batch["n_step_discount"] * torch.where(
+            batch["n_step_terminal"].bool(), torch.zeros_like(successor), successor)
+    # 兼容旧诊断/测试批次；正式 Dataset 始终提供显式 N-step 字段。
     length = batch['reward'].shape[1]
     return td_target(batch["reward"], batch["terminal"], values[:, 1:length+1], gamma)
 
@@ -116,7 +125,7 @@ class Learner:
             use_advantage = cfg.get('actor_advantage_weighting', True)
             weights = (advantage_weights(advantage, cfg["advantage_beta"], cfg["max_weight"])
                        if use_advantage else torch.ones_like(advantage))
-            # 标准单步 IQL：即时奖励加下一状态 V，终局关闭 bootstrap。
+            # N-step 回报只读取轨迹内真实后继；终局关闭 bootstrap，截断使用最后真实状态。
             target = batch_td_target(batch, new_value, cfg["gamma"])
         actor_updated, actor_grad, actor_loss = False, None, None
         sampling = self.config.get("actor_sampling", {})
@@ -161,7 +170,9 @@ class Learner:
                       changepoint_weight=change_weight,
                       actor_changepoint_samples=int((changed & actor_mask).sum()),
                       actor_history_eligible_samples=int((eligible & actor_mask).sum()),
-                      n_step=1, n_step_actual_mean=1.0,
+                      n_step=cfg["n_step"],
+                      n_step_actual_mean=float(batch["n_step_actual"][mask].float().mean())
+                          if "n_step_actual" in batch else 1.0,
                       actor_weighting_enabled=weighting_enabled, actor_neutral_weight=neutral_weight,
                       actor_advantage_weighting=use_advantage,
                       actor_objective=('advantage_weighted' if use_advantage else
@@ -206,6 +217,9 @@ class Learner:
                     previous_eligible=int(eligible.sum()), previous_correct=int(((previous == labels) & eligible).sum()),
                     td_mse=float(error.square().mean()), td_mae=float(error.abs().mean()),
                     q_mean=float(torch.minimum(q1, q2).mean()), v_mean=float(v[:, :action.shape[1]][mask].mean()),
+                    n_step=self.config["iql"]["n_step"],
+                    n_step_actual_mean=float(b["n_step_actual"][mask].float().mean())
+                        if "n_step_actual" in b else 1.0,
                     target_sum=float(target.sum()), target_square_sum=float(target.double().square().sum()),
                     residual_sum=float(error.sum()), residual_square_sum=float(error.double().square().sum()))
         if health_diagnostics:

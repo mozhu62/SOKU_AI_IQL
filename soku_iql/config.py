@@ -75,8 +75,8 @@ def load(path, source):
         raise ValueError('关键帧权重必须是>=1的有限数值，enabled必须是布尔值')
     if type(q['actor_advantage_weighting']) is not bool:
         raise ValueError('iql.actor_advantage_weighting 必须是布尔值')
-    if type(q["n_step"]) is not int or q["n_step"] != 1:
-        raise ValueError("当前 IQL 固定使用单步 TD，请设置 iql.n_step=1")
+    if type(q["n_step"]) is not int or q["n_step"] < 1:
+        raise ValueError("iql.n_step 必须为正整数")
     sampling = cfg["actor_sampling"]
     weighting = cfg["actor_weighting"]
     weight = weighting["neutral_weight"]

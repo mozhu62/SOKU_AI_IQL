@@ -72,6 +72,8 @@ class IQLReplayStore(ReplayStore):
         names = self.split[split]
         weights = np.asarray([self.info[name]["transitions"] for name in names], np.float64)
         batch, length, burn = cfg["batch_size"], cfg["sequence_length"], cfg["burn_in"]
+        iql = getattr(self, "config", {}).get("iql", {})
+        n_step, gamma = iql.get("n_step", 1), iql.get("gamma", .99)
         chosen = rng.choice(len(names), min(batch, cfg["replays_per_batch"]), p=weights / weights.sum())
         pieces = []
         identities = []
@@ -84,11 +86,15 @@ class IQLReplayStore(ReplayStore):
             positions = starts + picks - prior
             burn_lengths = np.minimum(burn, positions - starts)
             prefix = positions[:, None] - burn_lengths[:, None] + np.arange(burn)
-            main = positions[:, None] + np.arange(length + 1)
-            # 只读取一个额外真实后继；尾部无效监督仍由 mask 排除。
+            # 监督段后保留最多 n_step 个真实状态，供每个位置按实际步数选择 bootstrap 状态。
+            main = positions[:, None] + np.arange(length + n_step)
             indices = np.concatenate((np.minimum(prefix, positions[:, None]), np.minimum(main, ends[:, None])), 1)
-            labels = np.minimum(main[:, :length], ends[:, None] - 1)
-            mask = main[:, :length] < ends[:, None]
+            transition_positions = positions[:, None] + np.arange(length)
+            labels = np.minimum(transition_positions, ends[:, None] - 1)
+            mask = transition_positions < ends[:, None]
+            returns, discounts, done, actual_steps = n_step_returns(
+                shard["iql_reward"], shard["iql_terminal"], transition_positions, ends[:, None], n_step, gamma)
+            bootstrap_index = np.arange(length)[None] + actual_steps
             if diagnostic_metadata:
                 identities.extend([{"shard": names[shard_id], "frame": int(labels[row, col]),
                                     "state": shard["state_continuous"][labels[row, col]].tolist(),
@@ -100,6 +106,9 @@ class IQLReplayStore(ReplayStore):
                                wrong_block_reward=shard["diagnostic_wrong_block_reward"][labels],
                                win_loss_reward=shard["diagnostic_win_loss_reward"][labels],
                                terminal=shard["iql_terminal"][labels], mask=mask,
+                               n_step_reward=returns, n_step_discount=discounts,
+                               n_step_terminal=done, n_step_actual=actual_steps,
+                               bootstrap_index=bootstrap_index.astype(np.int64),
                                previous_action=shard["previous_expert_action_id"][labels]))
         result = {k: np.concatenate([x[k] for x in pieces]) for k in pieces[0] if k != "observation"}
         result["observation"] = {k: np.concatenate([x["observation"][k] for x in pieces]) for k in pieces[0]["observation"]}
