@@ -44,7 +44,8 @@ def capture(batch, q1, q2, target_q1, target_q2, value, target, advantage,
     values["loss_coefficient"] = values["effective_weight"] / denominator.clamp_min(1e-30)
     values["applied_loss_coefficient"] = values["loss_coefficient"] * actor_updated
     for key in ("damage_reward", "wrong_block_reward", "pressure_event",
-                "pressure_spirit_loss", "pressure_reward", "win_loss_reward"):
+                "pressure_spirit_loss", "pressure_reward", "far_distance_event",
+                "horizontal_distance", "far_distance_penalty", "win_loss_reward"):
         if key in batch:
             values[key] = batch[key]
     for key in ("n_step_reward", "n_step_discount", "n_step_actual"):
@@ -90,7 +91,8 @@ def summarize(data, config, scope):
            "diagnostic_config": cfg}
     for key in ("q1", "q2", "target_q1", "target_q2", "v", "reward", "td_target",
                 "damage_reward", "wrong_block_reward", "pressure_event",
-                "pressure_spirit_loss", "pressure_reward", "win_loss_reward",
+                "pressure_spirit_loss", "pressure_reward", "far_distance_event",
+                "horizontal_distance", "far_distance_penalty", "win_loss_reward",
                 "n_step_reward", "n_step_discount", "n_step_actual"):
         if key in data:
             out.update(distribution(data[key], key))
@@ -120,6 +122,11 @@ def summarize(data, config, scope):
                    pressure_event_ratio=ratio(pressure.sum(), count),
                    pressure_spirit_loss_sum=float(data["pressure_spirit_loss"].sum()),
                    pressure_reward_sum=float(data["pressure_reward"].sum()))
+    if "far_distance_event" in data:
+        far = data["far_distance_event"].astype(bool)
+        out.update(far_distance_event_count=int(far.sum()),
+                   far_distance_event_ratio=ratio(far.sum(), count),
+                   far_distance_penalty_sum=float(data["far_distance_penalty"].sum()))
     selected, changed = data["actor_selected"].astype(bool), data["changed"].astype(bool)
     # final_weight 是用户要求的乘积；effective_weight 还包含实际筛选和 Neutral 权重。
     final_sum, effective_sum = data["final_weight"].sum(), data["effective_weight"].sum()

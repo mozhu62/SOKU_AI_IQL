@@ -24,7 +24,7 @@ iql:
   # 恢复IQL优势加权，与下方关键帧权重相乘；保留Actor从第一步更新。
   actor_advantage_weighting: true
   # 8 步折扣回报；终局提前停止，片段截断只从最后真实后继状态 bootstrap。
-  n_step: 32
+  n_step: 1
   gamma: 0.999165
   expectile: 0.7
   advantage_beta: 1.0
@@ -51,9 +51,12 @@ reward:
   win: 10.0
   loss: 10.0
   # 对手防御且灵力下降时，每个有效转移奖励一次；不把单纯举盾计为压制。
-  pressure: 0.05
+  pressure: 1.0
+  # 水平距离超过 300 后，每个有效转移持续扣除一个微小固定值。
+  far_distance_threshold: 300.0
+  far_distance_penalty: 0.0001
   damage_dealt: 0.001
   damage_taken: 0.001
 output:
-  # 压制奖励改变了训练目标，使用独立目录，避免覆盖旧实验。
-  directory: outputs/iql_suika_tcn256_pressure_v1
+  # 新增压制奖励和远距离惩罚，使用独立目录，避免覆盖旧实验。
+  directory: outputs/iql_suika_tcn256_pressure_far_v1

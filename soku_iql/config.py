@@ -17,7 +17,8 @@ IQL = dict(gamma=0.99, n_step=1, expectile=0.7, advantage_beta=3.0, max_weight=1
            target_tau=0.005, actor_lr=0.0001, critic_lr=0.0003, value_lr=0.0003,
            weight_decay=0.0, actor_warmup_steps=1000)
 REWARD = dict(damage_dealt=0.001, damage_taken=0.001, wrong_block=0.1,
-              pressure=0.0, win=0.0, loss=0.0)
+              pressure=0.0, far_distance_threshold=300.0, far_distance_penalty=0.0,
+              win=0.0, loss=0.0)
 ACTOR_SAMPLING = dict(enabled=False, neutral_max_fraction=0.25)
 ACTOR_WEIGHTING = dict(enabled=False, neutral_weight=0.25)
 KEYFRAME_WEIGHTING = dict(enabled=False, changepoint_weight=32.0)
@@ -34,8 +35,9 @@ def validate_resume(config, previous):
     for key in ("model", "seed", "iql", "reward"):
         current, old = config[key], previous[key]
         if key == 'reward':
-            # 旧包没有错防和压制奖励，必须按 0 解释，避免续训时静默改变历史训练目标。
-            old = {**REWARD, "wrong_block": 0.0, "pressure": 0.0, **old}
+            # 旧包没有这些塑形项，必须按关闭解释，避免续训时静默改变历史训练目标。
+            old = {**REWARD, "wrong_block": 0.0, "pressure": 0.0,
+                   "far_distance_penalty": 0.0, **old}
         if key == "iql":
             old = {'actor_advantage_weighting': True, **old}
             # N-step 可显式切换；其余算法参数继续执行原有续训约束。

@@ -33,6 +33,7 @@ class IQLReplayStore(ReplayStore):
         own = state[:, STATE_CONTINUOUS_FEATURES.index("self_hp")]
         enemy = state[:, STATE_CONTINUOUS_FEATURES.index("opponent_hp")]
         enemy_spirit = state[:, STATE_CONTINUOUS_FEATURES.index("opponent_current_spirit")]
+        relative_x = state[:, STATE_CONTINUOUS_FEATURES.index("relative_x")]
         valid = np.zeros(len(state), bool)
         for start, end in shard["segments"]:
             valid[start:end] = True
@@ -50,6 +51,11 @@ class IQLReplayStore(ReplayStore):
         pressure_event, pressure_spirit_loss = pressure_events(enemy_guarding, enemy_spirit, valid)
         pressure_reward = pressure_event.astype(np.float32) * self.config["reward"].get("pressure", 0.0)
         reward += pressure_reward
+        far_distance_event, horizontal_distance = far_distance_events(
+            relative_x, valid, self.config["reward"].get("far_distance_threshold", 300.0))
+        far_distance_penalty = (-far_distance_event.astype(np.float32)
+                                * self.config["reward"].get("far_distance_penalty", 0.0))
+        reward += far_distance_penalty
         outcome = ko_outcomes(own, enemy, valid, terminal)
         reward += np.where(outcome > 0, self.config['reward'].get('win', 0.0),
                            np.where(outcome < 0, -self.config['reward'].get('loss', 0.0), 0)).astype(np.float32)
@@ -62,6 +68,9 @@ class IQLReplayStore(ReplayStore):
                      diagnostic_pressure_event=pressure_event,
                      diagnostic_pressure_spirit_loss=pressure_spirit_loss,
                      diagnostic_pressure_reward=pressure_reward,
+                     diagnostic_far_distance_event=far_distance_event,
+                     diagnostic_horizontal_distance=horizontal_distance,
+                     diagnostic_far_distance_penalty=far_distance_penalty,
                      diagnostic_win_loss_reward=np.where(outcome > 0, self.config['reward'].get('win', 0.0),
                          np.where(outcome < 0, -self.config['reward'].get('loss', 0.0), 0)).astype(np.float32))
         size = sum(value.nbytes for value in shard.values())
@@ -118,6 +127,9 @@ class IQLReplayStore(ReplayStore):
                                pressure_event=shard["diagnostic_pressure_event"][labels],
                                pressure_spirit_loss=shard["diagnostic_pressure_spirit_loss"][labels],
                                pressure_reward=shard["diagnostic_pressure_reward"][labels],
+                               far_distance_event=shard["diagnostic_far_distance_event"][labels],
+                               horizontal_distance=shard["diagnostic_horizontal_distance"][labels],
+                               far_distance_penalty=shard["diagnostic_far_distance_penalty"][labels],
                                win_loss_reward=shard["diagnostic_win_loss_reward"][labels],
                                terminal=shard["iql_terminal"][labels], mask=mask,
                                n_step_reward=returns, n_step_discount=discounts,
@@ -150,6 +162,12 @@ def pressure_events(opponent_guarding, opponent_spirit, valid):
     events[:-1] = valid[:-1] & guarded & (loss > 0)
     spirit_loss[:-1] = np.where(events[:-1], loss, 0)
     return events, spirit_loss
+
+
+def far_distance_events(relative_x, valid, threshold):
+    """只按水平间距识别远距离，避免空中高度把正常交战误判为脱离。"""
+    distance = np.abs(relative_x).astype(np.float32)
+    return valid & (distance > threshold), distance
 
 
 def ko_outcomes(own, enemy, valid, terminal):

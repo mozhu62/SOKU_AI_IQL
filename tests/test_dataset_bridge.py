@@ -8,7 +8,7 @@ from soku_iql.bc_core.action_space import ACTION_SCHEMA
 from soku_iql.bc_core.config import DEFAULTS
 from soku_iql.bc_core.dataset import ReplayStore
 from soku_iql.bc_core.schema import manifest
-from soku_iql.dataset import IQLReplayStore, pressure_events
+from soku_iql.dataset import IQLReplayStore, far_distance_events, pressure_events
 
 
 def write_shard(path):
@@ -90,3 +90,11 @@ def test_pressure_requires_guard_and_spirit_loss():
         np.array([True, True, True, True, False]))
     np.testing.assert_array_equal(event, [True, False, True, False, False])
     np.testing.assert_allclose(loss, [100, 0, 100, 0, 0])
+
+
+def test_far_distance_uses_horizontal_distance_and_valid_mask():
+    event, distance = far_distance_events(
+        np.array([-301, 300, 450, 100], np.float32),
+        np.array([True, True, False, True]), 300.0)
+    np.testing.assert_array_equal(event, [True, False, False, False])
+    np.testing.assert_allclose(distance, [301, 300, 450, 100])

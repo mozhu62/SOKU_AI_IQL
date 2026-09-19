@@ -42,7 +42,7 @@ validation/probe不执行随机Actor筛选，权重标记为候选权重，不�
 weight_clip_ratio按 beta*A >= log(max_weight) 计算，避免浮点舍入误判。
 关闭actor_advantage_weighting时实际weight=1、clip=0，同时记录假设开启时的截顶率。
 positive/negative比例按A正负统计，near_zero按abs(A)<=阈值；三者不是互斥分组。
-reward保留原计算，并额外记录扣血差、错防和KO奖励分量；td_target采用运行配置指定的N-step公式。
+reward保留原计算，并额外记录扣血差、错防、压制、远距离惩罚和KO奖励分量；td_target采用运行配置指定的N-step公式。
 类别的mean_td_target是N-step TD估计，不能称为完整实测Return；不同N的结果不可直接横向比较。
 
 ## 动作类别
